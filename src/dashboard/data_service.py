@@ -3,12 +3,18 @@ import json
 import re
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 import yaml
 
 from config.app_config import JOB_SITE
-from config.constants import LOG_DIR, OUTPUT_DIR_INDEED, OUTPUT_DIR_LINKEDIN, SEARCH_CONFIG_FILE
+from config.constants import (
+    DB_FILE,
+    LOG_DIR,
+    OUTPUT_DIR_INDEED,
+    OUTPUT_DIR_LINKEDIN,
+    SEARCH_CONFIG_FILE,
+)
 from src.dashboard.runtime import (
     CONTROL_FILE,
     EVENTS_FILE,
@@ -22,18 +28,62 @@ from src.dashboard.runtime import (
     read_events_for_run,
     sync_process_state,
 )
+from src.database.db_manager import DBManager
 from src.pydantic_models.config_models import SearchConfig
 from src.utils.utils import save_yaml_file
 
 OUTPUT_DIR = OUTPUT_DIR_LINKEDIN if JOB_SITE == "linkedin" else OUTPUT_DIR_INDEED
 APP_CONFIG_FILE = ROOT_DIR / "config" / "app_config.py"
 LAST_RUN_FILE = ROOT_DIR / OUTPUT_DIR / "last_run.yaml"
-SUCCESS_FILE = ROOT_DIR / OUTPUT_DIR / "success.yaml"
-SKIPPED_FILE = ROOT_DIR / OUTPUT_DIR / "skipped.yaml"
-FAILED_FILE = ROOT_DIR / OUTPUT_DIR / "failed.yaml"
-INTERESTING_FILE = ROOT_DIR / OUTPUT_DIR / "interesting_jobs.yaml"
 LLM_CALLS_FILE = ROOT_DIR / LOG_DIR / "llm_api_calls.yaml"
 MESSAGES_FILE = ROOT_DIR / OUTPUT_DIR / "messages_dry_run.yaml"
+
+_db: DBManager | None = None
+
+
+def _get_db() -> DBManager:
+    global _db
+    if _db is None:
+        _db = DBManager(ROOT_DIR / DB_FILE)
+    return _db
+
+
+_RESULT_PRIORITY: Dict[str, int] = {
+    "success": 0,
+    "skip": 1,
+    "error": 2,
+    "failed": 2,
+    "interesting": 3,
+}
+
+
+def _result_to_status(result: str) -> str:
+    r = result.lower()
+    if r == "success":
+        return "applied"
+    if r == "skip":
+        return "skipped"
+    if r in {"error", "failed"}:
+        return "failed"
+    return r
+
+
+def _db_row_to_job(row: Dict[str, Any], status: str) -> Dict[str, Any]:
+    return {
+        "status": status,
+        "company_name": row["company_name"],
+        "job_title": row["job_title"] or "",
+        "url": row["url"] or "",
+        "skip_reason": row["skip_reason"] or "",
+        "interest_score": row["interest_score"],
+        "interest_reason": row["interest_reason"] or "",
+        "skills": json.loads(row["skills"]) if row["skills"] else None,
+        "llm_time_seconds": row["llm_time_seconds"] or 0.0,
+        "executed_at": row["executed_at"],
+        "submitted_resume_path": row["submitted_resume_path"],
+    }
+
+
 EDITABLE_APP_CONFIG_KEYS = {
     "MAX_APPLIES_NUM",
     "HEADLESS_MODE",
@@ -63,47 +113,28 @@ def _read_yaml(path: Path, default: Any) -> Any:
     return deepcopy(default) if data is None else data
 
 
-def _flatten_company_jobs(
-    data: Dict[str, List[Dict[str, Any]]], status: str
-) -> List[Dict[str, Any]]:
-    rows: List[Dict[str, Any]] = []
-    for company_name, jobs in (data or {}).items():
-        for job in jobs or []:
-            rows.append(
-                {
-                    "status": status,
-                    "company_name": job.get("company_name") or company_name,
-                    "job_title": job.get("job_title", ""),
-                    "url": job.get("url", ""),
-                    "skip_reason": job.get("skip_reason", ""),
-                    "interest_score": job.get("interest_score"),
-                    "interest_reason": job.get("interest_reason"),
-                    "skills": job.get("skills"),
-                    "llm_time_seconds": job.get("llm_time_seconds", 0.0),
-                    "executed_at": job.get("executed_at"),
-                    "submitted_resume_path": job.get("submitted_resume_path"),
-                }
-            )
-    return rows
-
-
 def _job_url_key(url: str | None) -> str:
     return (url or "").rstrip("/")
 
 
 def _load_jobs_board() -> List[Dict[str, Any]]:
-    jobs = []
-    jobs.extend(_flatten_company_jobs(_read_yaml(SUCCESS_FILE, {}), "applied"))
-    jobs.extend(_flatten_company_jobs(_read_yaml(SKIPPED_FILE, {}), "skipped"))
-    jobs.extend(_flatten_company_jobs(_read_yaml(FAILED_FILE, {}), "failed"))
+    rows = _get_db().get_all_job_applications()
 
-    interesting_jobs = _read_yaml(INTERESTING_FILE, [])
-    seen_urls = {job.get("url") for job in jobs if job.get("url")}
-    for job in interesting_jobs:
-        if job.get("url") and job.get("url") in seen_urls:
-            continue
-        jobs.append({"status": "interesting", **job})
+    by_url: Dict[str, Tuple[Dict[str, Any], int]] = {}
+    no_url: List[Dict[str, Any]] = []
 
+    for row in rows:
+        result = (row["result"] or "").lower()
+        status = _result_to_status(result)
+        priority = _RESULT_PRIORITY.get(result, 99)
+        job = _db_row_to_job(row, status)
+        url_key = _job_url_key(row.get("url"))
+        if not url_key:
+            no_url.append(job)
+        elif url_key not in by_url or priority < by_url[url_key][1]:
+            by_url[url_key] = (job, priority)
+
+    jobs = [entry for entry, _ in by_url.values()] + no_url
     jobs.sort(
         key=lambda job: (
             job.get("status") != "in_progress",
@@ -230,15 +261,16 @@ def _build_run_jobs(run_id: str) -> List[Dict[str, Any]]:
                 job["status"] = "failed"
                 job["skip_reason"] = payload.get("reason") or job.get("skip_reason", "")
 
-    saved_jobs_by_url = {
-        _job_url_key(job.get("url")): job
-        for job in (
-            _flatten_company_jobs(_read_yaml(SUCCESS_FILE, {}), "applied")
-            + _flatten_company_jobs(_read_yaml(SKIPPED_FILE, {}), "skipped")
-            + _flatten_company_jobs(_read_yaml(FAILED_FILE, {}), "failed")
-        )
-        if job.get("url")
-    }
+    event_urls = [u for u in jobs if not u.startswith("unknown:")]
+    db_rows = _get_db().get_job_applications_by_urls(event_urls)
+    saved_jobs_by_url: Dict[str, Dict[str, Any]] = {}
+    for row in db_rows:
+        result = (row["result"] or "").lower()
+        if result == "interesting":
+            continue
+        url_key = _job_url_key(row.get("url"))
+        if url_key and url_key not in saved_jobs_by_url:
+            saved_jobs_by_url[url_key] = _db_row_to_job(row, _result_to_status(result))
 
     rows = []
     for job in jobs.values():

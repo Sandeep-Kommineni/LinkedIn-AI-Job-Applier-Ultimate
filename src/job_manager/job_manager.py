@@ -253,6 +253,21 @@ class BaseJobManager(ABC):
         self._save_data_to_yaml(
             [job.model_dump() for job in self.interesting_jobs], "interesting_jobs.yaml"
         )
+        try:
+            self.db_manager.insert_job_application(
+                job_site=JOB_SITE,
+                company_name=interesting_job.company_name,
+                job_title=interesting_job.job_title,
+                url=interesting_job.url,
+                result="interesting",
+                skills=self.job_key_skills,
+                interest_score=interesting_job.interest_score,
+                interest_reason=interesting_job.interest_reason,
+                llm_time_seconds=interesting_job.llm_time_seconds,
+                executed_at=datetime.now().isoformat(timespec="seconds"),
+            )
+        except Exception as e:
+            logger.warning(f"Failed to write interesting job to DB: {e}")
         logger.info("Interesting job successfully saved to a file")
 
     def _save_data_to_yaml(

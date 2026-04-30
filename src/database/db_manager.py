@@ -175,5 +175,18 @@ class DBManager:
         )
         self._conn.commit()
 
+    def get_all_job_applications(self) -> list[dict]:
+        cursor = self._conn.execute("SELECT * FROM job_applications ORDER BY executed_at DESC")
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_job_applications_by_urls(self, urls: list[str]) -> list[dict]:
+        if not urls:
+            return []
+        placeholders = ",".join("?" * len(urls))
+        cursor = self._conn.execute(
+            f"SELECT * FROM job_applications WHERE url IN ({placeholders})", urls
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
     def close(self) -> None:
         self._conn.close()
