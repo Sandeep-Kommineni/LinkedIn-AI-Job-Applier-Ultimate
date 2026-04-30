@@ -51,6 +51,7 @@ class IndeedEasyApplier(BaseEasyApplier):
         resume_dir: Path,
         cover_letter_dir: Path,
         test_mode: bool,
+        db_manager=None,
     ):
         self.page = page
         self.gpt_answerer = gpt_answerer
@@ -65,6 +66,8 @@ class IndeedEasyApplier(BaseEasyApplier):
         self.previous_question_texts: List[str] = []
         self.generated_resume_dir = Path(resume_dir) / "generated_resumes"
         self.ready_made_resume_path = get_ready_made_resume()
+        self.db_manager = db_manager
+        self.job_site = "indeed"
 
         logger.info("IndeedEasyApplier initialized")
 

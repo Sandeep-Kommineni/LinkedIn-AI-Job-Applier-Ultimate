@@ -335,6 +335,7 @@ class IndeedJobManager(BaseJobManager):
             resume_dir=Path(RESUME_DIR),
             cover_letter_dir=Path(COVER_LETTER_DIR),
             test_mode=TEST_MODE,
+            db_manager=self.db_manager,
         )
         apply_result, self.submitted_resume_path = await easy_applier_component.apply_to_job(job)
         return apply_result

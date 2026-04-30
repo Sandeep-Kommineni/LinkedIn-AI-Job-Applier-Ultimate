@@ -361,6 +361,7 @@ class LinkedInJobManager(BaseJobManager):
             RESUME_DIR,
             COVER_LETTER_DIR,
             TEST_MODE,
+            db_manager=self.db_manager,
         )
         easy_applier_component.set_page(self.page)
         apply_result, self.submitted_resume_path = await easy_applier_component.apply_to_job(job)

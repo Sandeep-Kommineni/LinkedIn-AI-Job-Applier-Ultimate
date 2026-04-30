@@ -43,6 +43,7 @@ class LinkedInEasyApplier(BaseEasyApplier):
         resume_dir: Path,
         cover_letter_dir: Path,
         test_mode: bool,
+        db_manager=None,
     ):
         logger.info("Initializing LinkedInEasyApplier")
         self.page = page
@@ -61,6 +62,8 @@ class LinkedInEasyApplier(BaseEasyApplier):
         self.current_job = None
         self.test_mode = test_mode
         self.previous_question_texts = []
+        self.db_manager = db_manager
+        self.job_site = "linkedin"
         logger.info("LinkedInEasyApplier initialized successfully")
 
     def set_page(self, page: Page) -> None:
@@ -803,6 +806,17 @@ class LinkedInEasyApplier(BaseEasyApplier):
                 c.drawText(text_object)
                 c.save()
                 logger.info(f"Cover letter successfully generated and saved to: {file_path_pdf}")
+                if self.db_manager:
+                    try:
+                        self.db_manager.insert_cover_letter(
+                            self.job_site,
+                            job.company_name,
+                            job.job_title,
+                            job.url,
+                            os.path.abspath(file_path_pdf),
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to write cover letter to DB: {e}")
 
                 break
             except Exception as e:

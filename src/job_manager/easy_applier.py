@@ -76,6 +76,17 @@ class BaseEasyApplier(ABC):
                         with open(file_path_pdf, "wb") as f:
                             f.write(base64.b64decode(resume_pdf_base64))
                         logger.info(f"Resume successfully generated and saved to: {file_path_pdf}")
+                        if self.db_manager:
+                            try:
+                                self.db_manager.insert_resume(
+                                    self.job_site,
+                                    job.company_name,
+                                    job.job_title,
+                                    job.url,
+                                    os.path.abspath(file_path_pdf),
+                                )
+                            except Exception as e:
+                                logger.warning(f"Failed to write resume to DB: {e}")
                         break
                     except HTTPStatusError as e:
                         if e.response.status_code == 429:
@@ -166,6 +177,16 @@ class BaseEasyApplier(ABC):
                 save_yaml_file(
                     self.answers_file, [question.model_dump() for question in self.all_questions]
                 )
+                if self.db_manager:
+                    try:
+                        self.db_manager.upsert_question(
+                            self.job_site,
+                            question_data.question,
+                            question_data.question_type,
+                            question_data.answer,
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to write question to DB: {e}")
             else:
                 logger.debug("Question already exists, skipping save")
         except Exception:

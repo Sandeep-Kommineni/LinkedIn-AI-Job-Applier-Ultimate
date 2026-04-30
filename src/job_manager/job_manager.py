@@ -8,9 +8,10 @@ from typing import Any, Dict, List, Tuple
 import yaml
 
 from config.app_config import COLLECT_INFO_MODE, JOB_SITE, MAX_APPLIES_NUM, TEST_MODE
-from config.constants import OUTPUT_DIR_INDEED, OUTPUT_DIR_LINKEDIN
+from config.constants import DB_FILE, OUTPUT_DIR_INDEED, OUTPUT_DIR_LINKEDIN
 from config.logger_config import logger
 from src.dashboard.runtime import emit_event
+from src.database.db_manager import DBManager
 from src.pydantic_models.job_models import Job, JobInfo, JobManagerCache
 from src.telegram.telegram_manager import TelegramReportSender
 from src.utils.utils import sanitize_text, save_yaml_file
@@ -63,6 +64,7 @@ class BaseJobManager(ABC):
         self.previous_apply_number = self._check_the_previous_apply_number()
         self.success_applies_num = self.previous_apply_number
         self.total_applies_num = self.cache.total_applies_num
+        self.db_manager = DBManager(DB_FILE)
         logger.info("Parameters successfully set")
 
     def set_answerer_and_agent(self, llm_answerer_component: Any, llm_agent_component: Any):
@@ -174,6 +176,23 @@ class BaseJobManager(ABC):
                 seen_companies[company_name] = [job_info.model_dump()]
 
         self._save_company_to_yaml(filename, companies)
+        try:
+            self.db_manager.insert_job_application(
+                job_site=JOB_SITE,
+                company_name=job_info.company_name,
+                job_title=job_info.job_title,
+                url=job_info.url,
+                result=result,
+                skip_reason=job_info.skip_reason,
+                skills=evaluation.get("skills"),
+                interest_score=job_info.interest_score,
+                interest_reason=job_info.interest_reason,
+                llm_time_seconds=job_info.llm_time_seconds,
+                submitted_resume_path=job_info.submitted_resume_path,
+                executed_at=job_info.executed_at,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to write job application to DB: {e}")
 
     def _save_company_to_yaml(self, filename: str, companies: List[Dict[str, str]]) -> None:
         """Save already viewed companies and their vacancies to a file"""
