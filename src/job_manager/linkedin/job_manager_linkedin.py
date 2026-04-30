@@ -54,6 +54,7 @@ class LinkedInJobManager(BaseJobManager):
         self.resume_generator_manager = None
         self.submitted_resume_path = None
         self.pause_checker = None
+        self.db_manager = None
         self.jobs_no_info = (
             []
         )  # vacancies to which applications were not sent due to missing information

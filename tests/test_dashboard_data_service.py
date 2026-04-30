@@ -12,62 +12,9 @@ def _write_yaml(path: Path, data) -> None:
 
 
 def test_get_summary_aggregates_dashboard_outputs(monkeypatch, tmp_path):
-    output_dir = tmp_path / "data" / "output"
+    from unittest.mock import MagicMock
+
     logs_dir = tmp_path / "logs"
-
-    _write_yaml(
-        output_dir / "success.yaml",
-        {"Acme": [{"job_title": "CTO", "url": "https://linkedin.com/jobs/view/1"}]},
-    )
-    _write_yaml(
-        output_dir / "skipped.yaml",
-        {
-            "Beta": [
-                {
-                    "job_title": "VP Engineering",
-                    "url": "https://linkedin.com/jobs/view/2",
-                    "skip_reason": "Not interesting",
-                    "llm_time_seconds": 3.2,
-                    "executed_at": "2026-04-15T10:03:00",
-                }
-            ]
-        },
-    )
-    _write_yaml(
-        output_dir / "failed.yaml",
-        {
-            "Gamma": [
-                {
-                    "job_title": "Head of Engineering",
-                    "url": "https://linkedin.com/jobs/view/3",
-                    "skip_reason": "Playwright error",
-                }
-            ]
-        },
-    )
-    _write_yaml(
-        output_dir / "interesting_jobs.yaml",
-        [
-            {
-                "job_title": "Chief Architect",
-                "company_name": "Delta",
-                "url": "https://linkedin.com/jobs/view/4",
-                "interest_score": 90,
-                "llm_time_seconds": 1.5,
-                "executed_at": "2026-04-15T10:04:00",
-            }
-        ],
-    )
-    _write_yaml(
-        output_dir / "last_run.yaml",
-        {
-            "last_run": "2026-04-15T10:00:00",
-            "last_apply": "2026-04-15T10:30:00",
-            "success_applies_num": 2,
-            "total_applies_num": 7,
-        },
-    )
-
     logs_dir.mkdir(parents=True, exist_ok=True)
     (logs_dir / "llm_api_calls.yaml").write_text(
         "---\n"
@@ -83,10 +30,62 @@ def test_get_summary_aggregates_dashboard_outputs(monkeypatch, tmp_path):
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(data_service, "SUCCESS_FILE", output_dir / "success.yaml")
-    monkeypatch.setattr(data_service, "SKIPPED_FILE", output_dir / "skipped.yaml")
-    monkeypatch.setattr(data_service, "FAILED_FILE", output_dir / "failed.yaml")
-    monkeypatch.setattr(data_service, "INTERESTING_FILE", output_dir / "interesting_jobs.yaml")
+    mock_db = MagicMock()
+    mock_db.get_all_job_applications.return_value = [
+        {
+            "result": "success",
+            "company_name": "Acme",
+            "job_title": "CTO",
+            "url": "https://linkedin.com/jobs/view/1",
+            "skip_reason": None,
+            "interest_score": None,
+            "interest_reason": None,
+            "skills": None,
+            "llm_time_seconds": None,
+            "executed_at": None,
+            "submitted_resume_path": None,
+        },
+        {
+            "result": "skip",
+            "company_name": "Beta",
+            "job_title": "VP Engineering",
+            "url": "https://linkedin.com/jobs/view/2",
+            "skip_reason": "Not interesting",
+            "interest_score": None,
+            "interest_reason": None,
+            "skills": None,
+            "llm_time_seconds": 3.2,
+            "executed_at": "2026-04-15T10:03:00",
+            "submitted_resume_path": None,
+        },
+        {
+            "result": "failed",
+            "company_name": "Gamma",
+            "job_title": "Head of Engineering",
+            "url": "https://linkedin.com/jobs/view/3",
+            "skip_reason": "Playwright error",
+            "interest_score": None,
+            "interest_reason": None,
+            "skills": None,
+            "llm_time_seconds": None,
+            "executed_at": None,
+            "submitted_resume_path": None,
+        },
+        {
+            "result": "interesting",
+            "company_name": "Delta",
+            "job_title": "Chief Architect",
+            "url": "https://linkedin.com/jobs/view/4",
+            "skip_reason": None,
+            "interest_score": 90,
+            "interest_reason": None,
+            "skills": None,
+            "llm_time_seconds": 1.5,
+            "executed_at": "2026-04-15T10:04:00",
+            "submitted_resume_path": None,
+        },
+    ]
+    monkeypatch.setattr(data_service, "_get_db", lambda: mock_db)
     monkeypatch.setattr(data_service, "LLM_CALLS_FILE", logs_dir / "llm_api_calls.yaml")
     monkeypatch.setattr(data_service, "ROOT_DIR", tmp_path)
     monkeypatch.setattr(
@@ -337,8 +336,7 @@ def test_get_run_jobs_builds_status_from_events(monkeypatch):
     assert len(jobs) == 2
     assert any(job["status"] == "applied" and job["interest_score"] == 92 for job in jobs)
     assert any(
-        job["status"] == "applied"
-        and job["submitted_resume_path"] == "/tmp/resumes/cto.pdf"
+        job["status"] == "applied" and job["submitted_resume_path"] == "/tmp/resumes/cto.pdf"
         for job in jobs
     )
     assert any(
@@ -348,29 +346,26 @@ def test_get_run_jobs_builds_status_from_events(monkeypatch):
 
 
 def test_get_run_jobs_enriches_missing_fields_from_saved_outputs(monkeypatch, tmp_path):
-    output_dir = tmp_path / "data" / "output"
-    _write_yaml(
-        output_dir / "success.yaml",
-        {
-            "1inch": [
-                {
-                    "company_name": "1inch",
-                    "job_title": "Chief Product Officer",
-                    "url": "https://www.linkedin.com/jobs/view/4401460753/",
-                    "interest_score": 75,
-                    "interest_reason": "Strong fintech and Web3 alignment",
-                    "skills": ["product strategy", "web3"],
-                    "llm_time_seconds": 28.037,
-                }
-            ]
-        },
-    )
-    _write_yaml(output_dir / "skipped.yaml", {})
-    _write_yaml(output_dir / "failed.yaml", {})
+    import json
+    from unittest.mock import MagicMock
 
-    monkeypatch.setattr(data_service, "SUCCESS_FILE", output_dir / "success.yaml")
-    monkeypatch.setattr(data_service, "SKIPPED_FILE", output_dir / "skipped.yaml")
-    monkeypatch.setattr(data_service, "FAILED_FILE", output_dir / "failed.yaml")
+    saved_row = {
+        "result": "success",
+        "company_name": "1inch",
+        "job_title": "Chief Product Officer",
+        "url": "https://www.linkedin.com/jobs/view/4401460753/",
+        "skip_reason": None,
+        "interest_score": 75,
+        "interest_reason": "Strong fintech and Web3 alignment",
+        "skills": json.dumps(["product strategy", "web3"]),
+        "llm_time_seconds": 28.037,
+        "executed_at": None,
+        "submitted_resume_path": None,
+    }
+    mock_db = MagicMock()
+    mock_db.get_job_applications_by_urls.return_value = [saved_row]
+    monkeypatch.setattr(data_service, "_get_db", lambda: mock_db)
+
     monkeypatch.setattr(
         data_service,
         "read_events_for_run",
@@ -399,29 +394,25 @@ def test_get_run_jobs_enriches_missing_fields_from_saved_outputs(monkeypatch, tm
 
 
 def test_get_jobs_includes_executed_at_from_saved_outputs(monkeypatch, tmp_path):
-    output_dir = tmp_path / "data" / "output"
+    from unittest.mock import MagicMock
 
-    _write_yaml(
-        output_dir / "success.yaml",
+    mock_db = MagicMock()
+    mock_db.get_all_job_applications.return_value = [
         {
-            "Acme": [
-                {
-                    "job_title": "CTO",
-                    "url": "https://linkedin.com/jobs/view/1",
-                    "executed_at": "2026-04-15T10:02:00",
-                    "submitted_resume_path": "/tmp/resumes/cto.pdf",
-                }
-            ]
-        },
-    )
-    _write_yaml(output_dir / "skipped.yaml", {})
-    _write_yaml(output_dir / "failed.yaml", {})
-    _write_yaml(output_dir / "interesting_jobs.yaml", [])
-
-    monkeypatch.setattr(data_service, "SUCCESS_FILE", output_dir / "success.yaml")
-    monkeypatch.setattr(data_service, "SKIPPED_FILE", output_dir / "skipped.yaml")
-    monkeypatch.setattr(data_service, "FAILED_FILE", output_dir / "failed.yaml")
-    monkeypatch.setattr(data_service, "INTERESTING_FILE", output_dir / "interesting_jobs.yaml")
+            "result": "success",
+            "company_name": "Acme",
+            "job_title": "CTO",
+            "url": "https://linkedin.com/jobs/view/1",
+            "skip_reason": None,
+            "interest_score": None,
+            "interest_reason": None,
+            "skills": None,
+            "llm_time_seconds": None,
+            "executed_at": "2026-04-15T10:02:00",
+            "submitted_resume_path": "/tmp/resumes/cto.pdf",
+        }
+    ]
+    monkeypatch.setattr(data_service, "_get_db", lambda: mock_db)
     monkeypatch.setattr(data_service, "get_snapshot", lambda: {"current_job": None})
 
     jobs = data_service.get_jobs()

@@ -75,6 +75,7 @@ class IndeedJobManager(BaseJobManager):
         self.success_applies_num = 0
         self.resume_recommendations = ""
         self.submitted_resume_path = None
+        self.db_manager = None
 
         logger.info("IndeedJobManager successfully initialized")
 

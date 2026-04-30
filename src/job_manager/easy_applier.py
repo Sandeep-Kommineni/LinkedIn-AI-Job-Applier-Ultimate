@@ -21,6 +21,7 @@ class BaseEasyApplier(ABC):
         super().__init__()
         self.ready_made_resume_path = None
         self.submitted_resume_path = None
+        self.db_manager = None
 
     @abstractmethod
     async def apply_to_job(self, job: Job) -> None:
