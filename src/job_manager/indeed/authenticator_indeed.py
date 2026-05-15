@@ -1,3 +1,4 @@
+import asyncio
 from typing import Union
 
 from playwright.sync_api import Page
@@ -65,7 +66,9 @@ class IndeedAuthenticator(BaseAuthenticator):
             if not await safe_fill(self.page, "input[type='email']", self.email):
                 logger.error("Failed to fill email field")
                 return False
-            logger.info("Email entered. Please complete login manually within 60 seconds...")
+            logger.info(
+                "Email entered. Please complete login manually, then press Enter to continue..."
+            )
 
             continue_selectors = [
                 "button[type='submit']",
@@ -75,7 +78,9 @@ class IndeedAuthenticator(BaseAuthenticator):
                 if await safe_click(self.page, selector, timeout=10000):
                     break
 
-            await async_pause(60, 60)
+            await asyncio.get_event_loop().run_in_executor(
+                None, input, "Press Enter when login is complete..."
+            )
 
             return await self.check_login_success()
 

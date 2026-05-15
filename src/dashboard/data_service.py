@@ -92,6 +92,7 @@ EDITABLE_APP_CONFIG_KEYS = {
     "COLLECT_INFO_MODE",
     "EASY_APPLY_ONLY_MODE",
     "LINKEDIN_RECOMMENDED_JOBS_MODE",
+    "LINKEDIN_TOP_APPLICANT_JOBS_MODE",
     "RESTART_EVERY_DAY",
     "MINIMUM_WAIT_TIME_SEC",
     "FREE_TIER",
@@ -113,8 +114,16 @@ def _read_yaml(path: Path, default: Any) -> Any:
     return deepcopy(default) if data is None else data
 
 
+def _flatten_interesting_jobs(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [{"status": "interesting", **job} for job in data or []]
+
+
 def _job_url_key(url: str | None) -> str:
-    return (url or "").rstrip("/")
+    value = (url or "").strip()
+    linkedin_job_id = re.search(r"/jobs/view/(\d+)", value)
+    if linkedin_job_id:
+        return f"linkedin:{linkedin_job_id.group(1)}"
+    return value.split("?", 1)[0].rstrip("/")
 
 
 def _load_jobs_board() -> List[Dict[str, Any]]:
@@ -276,6 +285,8 @@ def _build_run_jobs(run_id: str) -> List[Dict[str, Any]]:
     for job in jobs.values():
         saved_job = saved_jobs_by_url.get(_job_url_key(job.get("url")))
         if saved_job:
+            if saved_job.get("status") == "interesting" and job.get("status") != "applied":
+                job["status"] = "interesting"
             for field in ("company_name", "job_title", "skip_reason", "interest_reason"):
                 job[field] = job.get(field) or saved_job.get(field)
             if job.get("interest_score") in (None, 0):
@@ -438,6 +449,16 @@ def get_jobs(status: str | None = None, search: str | None = None) -> List[Dict[
     return _apply_job_filters(_load_jobs_board(), status=status, search=search)
 
 
+def get_jobs_payload(status: str | None = None, search: str | None = None) -> Dict[str, Any]:
+    jobs = _load_jobs_board()
+    filtered_jobs = _apply_job_filters(jobs, status=status, search=search)
+    return {
+        "jobs": filtered_jobs,
+        "filtered_count": len(filtered_jobs),
+        "total_count": len(jobs),
+    }
+
+
 def get_messages(
     category: str | None = None,
     status: str | None = None,
@@ -478,6 +499,19 @@ def get_run_jobs(
     run_id: str, status: str | None = None, search: str | None = None
 ) -> List[Dict[str, Any]]:
     return _apply_job_filters(_build_run_jobs(run_id), status=status, search=search)
+
+
+def get_run_jobs_payload(
+    run_id: str, status: str | None = None, search: str | None = None
+) -> Dict[str, Any]:
+    jobs = _build_run_jobs(run_id)
+    filtered_jobs = _apply_job_filters(jobs, status=status, search=search)
+    return {
+        "run_id": run_id,
+        "jobs": filtered_jobs,
+        "filtered_count": len(filtered_jobs),
+        "total_count": len(jobs),
+    }
 
 
 def get_run_detail(run_id: str) -> Dict[str, Any]:

@@ -393,6 +393,110 @@ def test_get_run_jobs_enriches_missing_fields_from_saved_outputs(monkeypatch, tm
     assert jobs[0]["llm_time_seconds"] == 28.037
 
 
+def test_get_run_jobs_matches_saved_linkedin_url_with_tracking_params(monkeypatch, tmp_path):
+    output_dir = tmp_path / "data" / "output"
+    _write_yaml(output_dir / "success.yaml", {})
+    _write_yaml(
+        output_dir / "skipped.yaml",
+        {
+            "Do Well Do Good": [
+                {
+                    "company_name": "Do Well Do Good",
+                    "job_title": "Director",
+                    "url": "https://www.linkedin.com/jobs/view/4403407599/?trackingId=abc",
+                    "interest_score": 15,
+                    "interest_reason": "Not enough consulting experience",
+                    "skip_reason": "Not enough consulting experience",
+                    "llm_time_seconds": 107.073,
+                }
+            ]
+        },
+    )
+    _write_yaml(output_dir / "failed.yaml", {})
+    _write_yaml(output_dir / "interesting_jobs.yaml", [])
+
+    monkeypatch.setattr(data_service, "SUCCESS_FILE", output_dir / "success.yaml")
+    monkeypatch.setattr(data_service, "SKIPPED_FILE", output_dir / "skipped.yaml")
+    monkeypatch.setattr(data_service, "FAILED_FILE", output_dir / "failed.yaml")
+    monkeypatch.setattr(data_service, "INTERESTING_FILE", output_dir / "interesting_jobs.yaml")
+    monkeypatch.setattr(
+        data_service,
+        "read_events_for_run",
+        lambda run_id, limit=5000: [
+            {
+                "run_id": run_id,
+                "type": "job_result",
+                "message": "Job result: Skip",
+                "timestamp": "2026-05-08T15:42:48",
+                "payload": {
+                    "result": "skip",
+                    "job_title": "Director",
+                    "company_name": "Do Well Do Good",
+                    "url": "https://www.linkedin.com/jobs/view/4403407599/",
+                },
+            }
+        ][:limit],
+    )
+
+    jobs = data_service.get_run_jobs("run-20260508-154206")
+
+    assert jobs[0]["interest_score"] == 15
+    assert jobs[0]["interest_reason"] == "Not enough consulting experience"
+    assert jobs[0]["skip_reason"] == "Not enough consulting experience"
+    assert jobs[0]["llm_time_seconds"] == 107.073
+
+
+def test_get_run_jobs_enriches_interesting_jobs_from_saved_outputs(monkeypatch, tmp_path):
+    output_dir = tmp_path / "data" / "output"
+    _write_yaml(output_dir / "success.yaml", {})
+    _write_yaml(output_dir / "skipped.yaml", {})
+    _write_yaml(output_dir / "failed.yaml", {})
+    _write_yaml(
+        output_dir / "interesting_jobs.yaml",
+        [
+            {
+                "company_name": "Al Ghurair",
+                "job_title": "Vice President Information Technology",
+                "url": "https://www.linkedin.com/jobs/view/4359175355/",
+                "interest_score": 85,
+                "interest_reason": "Could not apply. Reason: Easy Apply dialog did not open",
+                "llm_time_seconds": 7.069,
+                "skills": ["api management", "governance"],
+            }
+        ],
+    )
+
+    monkeypatch.setattr(data_service, "SUCCESS_FILE", output_dir / "success.yaml")
+    monkeypatch.setattr(data_service, "SKIPPED_FILE", output_dir / "skipped.yaml")
+    monkeypatch.setattr(data_service, "FAILED_FILE", output_dir / "failed.yaml")
+    monkeypatch.setattr(data_service, "INTERESTING_FILE", output_dir / "interesting_jobs.yaml")
+    monkeypatch.setattr(
+        data_service,
+        "read_events_for_run",
+        lambda run_id, limit=5000: [
+            {
+                "run_id": run_id,
+                "type": "job_result",
+                "message": "Job result: Skip",
+                "timestamp": "2026-05-08T15:43:19",
+                "payload": {
+                    "result": "skip",
+                    "job_title": "Vice President Information Technology",
+                    "company_name": "Al Ghurair",
+                    "url": "https://www.linkedin.com/jobs/view/4359175355/",
+                },
+            }
+        ][:limit],
+    )
+
+    jobs = data_service.get_run_jobs("run-20260508-154206")
+
+    assert jobs[0]["status"] == "interesting"
+    assert jobs[0]["interest_score"] == 85
+    assert jobs[0]["interest_reason"] == "Could not apply. Reason: Easy Apply dialog did not open"
+    assert jobs[0]["skills"] == ["api management", "governance"]
+
+
 def test_get_jobs_includes_executed_at_from_saved_outputs(monkeypatch, tmp_path):
     from unittest.mock import MagicMock
 
@@ -419,6 +523,41 @@ def test_get_jobs_includes_executed_at_from_saved_outputs(monkeypatch, tmp_path)
 
     assert jobs[0]["executed_at"] == "2026-04-15T10:02:00"
     assert jobs[0]["submitted_resume_path"] == "/tmp/resumes/cto.pdf"
+
+
+def test_get_jobs_payload_includes_filtered_and_total_counts(monkeypatch):
+    monkeypatch.setattr(
+        data_service,
+        "_load_jobs_board",
+        lambda: [
+            {"status": "applied", "job_title": "CTO", "company_name": "Acme", "url": "1"},
+            {"status": "skipped", "job_title": "CPO", "company_name": "Beta", "url": "2"},
+        ],
+    )
+
+    payload = data_service.get_jobs_payload(status="applied")
+
+    assert payload["filtered_count"] == 1
+    assert payload["total_count"] == 2
+    assert payload["jobs"][0]["job_title"] == "CTO"
+
+
+def test_get_run_jobs_payload_includes_filtered_and_total_counts(monkeypatch):
+    monkeypatch.setattr(
+        data_service,
+        "_build_run_jobs",
+        lambda run_id: [
+            {"status": "applied", "job_title": "CTO", "company_name": "Acme", "url": "1"},
+            {"status": "skipped", "job_title": "CPO", "company_name": "Beta", "url": "2"},
+        ],
+    )
+
+    payload = data_service.get_run_jobs_payload("run-1", search="cto")
+
+    assert payload["run_id"] == "run-1"
+    assert payload["filtered_count"] == 1
+    assert payload["total_count"] == 2
+    assert payload["jobs"][0]["job_title"] == "CTO"
 
 
 def test_get_run_detail_combines_run_jobs_and_events(monkeypatch):

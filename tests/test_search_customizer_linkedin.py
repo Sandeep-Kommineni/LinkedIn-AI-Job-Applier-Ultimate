@@ -71,6 +71,16 @@ class TestSetAdvancedSearchParams:
         assert "Brazil" in customizer.location_blacklist
 
 
+class TestSearchDebugHelpers:
+    def test_format_linkedin_keyword_query_quotes_and_ors_positions(self, mock_page):
+        sc = SearchCustomizer(mock_page)
+        sc.positions = ["CTO", "Chief Technology Officer", " Technical Manager ", ""]
+        assert (
+            sc.format_linkedin_keyword_query()
+            == '"CTO" OR "Chief Technology Officer" OR "Technical Manager"'
+        )
+
+
 class TestIsJobBlacklisted:
     def test_blacklisted_company(self, customizer):
         assert customizer.is_job_blacklisted("Engineer", "Wayfair", "Germany") is True
@@ -98,7 +108,7 @@ class TestIsJobBlacklisted:
 
 class TestSetBasicSearchTerms:
     @pytest.mark.asyncio
-    async def test_fills_keywords_with_joined_positions(self, customizer):
+    async def test_fills_keywords_with_boolean_or_query(self, customizer):
         with (
             patch(f"{MODULE}.safe_fill", new_callable=AsyncMock, return_value=True) as mock_fill,
             patch(f"{MODULE}.find_element_safely", new_callable=AsyncMock, return_value=None),
@@ -106,7 +116,7 @@ class TestSetBasicSearchTerms:
             await customizer._set_basic_search_terms()
 
         first_call_args = mock_fill.call_args_list[0]
-        assert "Software Engineer, Python Developer" in first_call_args[0]
+        assert '"Software Engineer" OR "Python Developer"' in first_call_args[0]
 
     @pytest.mark.asyncio
     async def test_fills_location_and_presses_enter(self, customizer, mock_page):
@@ -141,10 +151,58 @@ class TestSetBasicSearchTerms:
     async def test_skips_keywords_when_no_positions(self, mock_page):
         sc = SearchCustomizer(mock_page)
         sc.positions = []
-        sc.locations = []
-        with patch(f"{MODULE}.safe_fill", new_callable=AsyncMock) as mock_fill:
+        sc.locations = ["Germany"]
+        with (
+            patch(f"{MODULE}.safe_fill", new_callable=AsyncMock, return_value=True) as mock_fill,
+            patch(f"{MODULE}.find_element_safely", new_callable=AsyncMock, return_value=None),
+        ):
             await sc._set_basic_search_terms()
-        mock_fill.assert_not_called()
+        assert all("Software Engineer" not in str(call.args) for call in mock_fill.call_args_list)
+
+    @pytest.mark.asyncio
+    async def test_clears_location_when_no_locations_configured(self, mock_page):
+        sc = SearchCustomizer(mock_page)
+        sc.positions = []
+        sc.locations = []
+        sc._dismiss_location_typeahead = AsyncMock()
+
+        with patch(f"{MODULE}.safe_fill", new_callable=AsyncMock, return_value=True) as mock_fill:
+            await sc._set_basic_search_terms()
+
+        mock_fill.assert_called_once()
+        assert mock_fill.call_args.args[2] == ""
+        mock_page.keyboard.press.assert_not_called()
+        sc._dismiss_location_typeahead.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_dismiss_location_typeahead_presses_escape_and_blurs(self, customizer, mock_page):
+        with patch(f"{MODULE}.async_pause", new_callable=AsyncMock):
+            await customizer._dismiss_location_typeahead()
+
+        mock_page.keyboard.press.assert_called_once_with("Escape")
+        mock_page.evaluate.assert_called_once_with(
+            "document.activeElement && document.activeElement.blur()"
+        )
+
+    @pytest.mark.asyncio
+    async def test_commit_basic_search_clicks_search_button(self, customizer):
+        with (
+            patch(f"{MODULE}.safe_click", new_callable=AsyncMock, return_value=True) as mock_click,
+            patch(f"{MODULE}.async_pause", new_callable=AsyncMock),
+        ):
+            await customizer._commit_basic_search()
+
+        mock_click.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_commit_basic_search_falls_back_to_enter(self, customizer, mock_page):
+        with (
+            patch(f"{MODULE}.safe_click", new_callable=AsyncMock, return_value=False),
+            patch(f"{MODULE}.async_pause", new_callable=AsyncMock),
+        ):
+            await customizer._commit_basic_search()
+
+        mock_page.keyboard.press.assert_called_once_with("Enter")
 
     @pytest.mark.asyncio
     async def test_does_not_press_enter_when_no_location_element(self, customizer, mock_page):
@@ -439,8 +497,10 @@ class TestSetSearchParams:
     async def test_navigates_to_linkedin_jobs(self, customizer, mock_page):
         with (
             patch(f"{MODULE}.LINKEDIN_RECOMMENDED_JOBS_MODE", False),
+            patch(f"{MODULE}.LINKEDIN_TOP_APPLICANT_JOBS_MODE", False),
             patch(f"{MODULE}.async_pause"),
             patch.object(customizer, "_set_basic_search_terms", new_callable=AsyncMock),
+            patch.object(customizer, "_commit_basic_search", new_callable=AsyncMock),
             patch.object(
                 customizer, "_open_all_filters", new_callable=AsyncMock, return_value=True
             ),
@@ -461,8 +521,12 @@ class TestSetSearchParams:
     async def test_recommended_jobs_mode_ignores_position_search(self, customizer, mock_page):
         with (
             patch(f"{MODULE}.LINKEDIN_RECOMMENDED_JOBS_MODE", True),
+            patch(f"{MODULE}.LINKEDIN_TOP_APPLICANT_JOBS_MODE", False),
             patch(f"{MODULE}.async_pause", new_callable=AsyncMock),
-            patch.object(customizer, "_set_basic_search_terms", new_callable=AsyncMock) as mock_basic,
+            patch.object(
+                customizer, "_set_basic_search_terms", new_callable=AsyncMock
+            ) as mock_basic,
+            patch.object(customizer, "_commit_basic_search", new_callable=AsyncMock) as mock_commit,
             patch.object(customizer, "_open_all_filters", new_callable=AsyncMock) as mock_filters,
         ):
             await customizer.set_search_params()
@@ -472,14 +536,39 @@ class TestSetSearchParams:
             wait_until="domcontentloaded",
         )
         mock_basic.assert_not_called()
+        mock_commit.assert_not_called()
+        mock_filters.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_top_applicant_jobs_mode_ignores_position_search(self, customizer, mock_page):
+        with (
+            patch(f"{MODULE}.LINKEDIN_RECOMMENDED_JOBS_MODE", False),
+            patch(f"{MODULE}.LINKEDIN_TOP_APPLICANT_JOBS_MODE", True),
+            patch(f"{MODULE}.async_pause", new_callable=AsyncMock),
+            patch.object(
+                customizer, "_set_basic_search_terms", new_callable=AsyncMock
+            ) as mock_basic,
+            patch.object(customizer, "_commit_basic_search", new_callable=AsyncMock) as mock_commit,
+            patch.object(customizer, "_open_all_filters", new_callable=AsyncMock) as mock_filters,
+        ):
+            await customizer.set_search_params()
+
+        mock_page.goto.assert_called_once_with(
+            "https://www.linkedin.com/jobs/collections/top-applicant/",
+            wait_until="domcontentloaded",
+        )
+        mock_basic.assert_not_called()
+        mock_commit.assert_not_called()
         mock_filters.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_calls_all_filter_setters_when_filters_open(self, customizer):
         with (
             patch(f"{MODULE}.LINKEDIN_RECOMMENDED_JOBS_MODE", False),
+            patch(f"{MODULE}.LINKEDIN_TOP_APPLICANT_JOBS_MODE", False),
             patch(f"{MODULE}.async_pause"),
             patch.object(customizer, "_set_basic_search_terms", new_callable=AsyncMock),
+            patch.object(customizer, "_commit_basic_search", new_callable=AsyncMock),
             patch.object(
                 customizer, "_open_all_filters", new_callable=AsyncMock, return_value=True
             ),
@@ -510,8 +599,10 @@ class TestSetSearchParams:
     async def test_skips_filter_setters_when_filters_not_open(self, customizer):
         with (
             patch(f"{MODULE}.LINKEDIN_RECOMMENDED_JOBS_MODE", False),
+            patch(f"{MODULE}.LINKEDIN_TOP_APPLICANT_JOBS_MODE", False),
             patch(f"{MODULE}.async_pause"),
             patch.object(customizer, "_set_basic_search_terms", new_callable=AsyncMock),
+            patch.object(customizer, "_commit_basic_search", new_callable=AsyncMock),
             patch.object(
                 customizer, "_open_all_filters", new_callable=AsyncMock, return_value=False
             ),
@@ -526,6 +617,10 @@ class TestSetSearchParams:
     @pytest.mark.asyncio
     async def test_raises_on_page_navigation_error(self, customizer, mock_page):
         mock_page.goto.side_effect = Exception("network error")
-        with (patch(f"{MODULE}.async_pause"),):
+        with (
+            patch(f"{MODULE}.LINKEDIN_RECOMMENDED_JOBS_MODE", False),
+            patch(f"{MODULE}.LINKEDIN_TOP_APPLICANT_JOBS_MODE", False),
+            patch(f"{MODULE}.async_pause"),
+        ):
             with pytest.raises(Exception, match="network error"):
                 await customizer.set_search_params()

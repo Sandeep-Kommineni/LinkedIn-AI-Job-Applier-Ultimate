@@ -9,7 +9,65 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link rel="stylesheet" href="/static/styles.css">
 </head>
-<body>
+<body class="dashboard-loading" aria-busy="true">
+  <div id="dashboard-loading" class="loading-shell" role="status" aria-live="polite" aria-label="Loading dashboard data">
+    <div class="loading-frame">
+      <section class="loading-hero loading-panel">
+        <div>
+          <span class="skeleton-line short"></span>
+          <span class="skeleton-line title"></span>
+          <span class="skeleton-line medium"></span>
+        </div>
+        <div class="loading-controls">
+          <span class="skeleton-pill"></span>
+          <span class="skeleton-pill"></span>
+          <span class="skeleton-pill danger"></span>
+        </div>
+      </section>
+
+      <section class="loading-summary">
+        <span class="loading-panel skeleton-card"></span>
+        <span class="loading-panel skeleton-card"></span>
+        <span class="loading-panel skeleton-card"></span>
+        <span class="loading-panel skeleton-card"></span>
+        <span class="loading-panel skeleton-card"></span>
+      </section>
+
+      <section class="loading-grid">
+        <div class="loading-panel skeleton-live">
+          <span class="skeleton-line short"></span>
+          <span class="skeleton-box current"></span>
+          <div class="skeleton-metrics">
+            <span></span><span></span><span></span><span></span>
+          </div>
+          <span class="skeleton-line wide"></span>
+          <span class="skeleton-line medium"></span>
+          <span class="skeleton-line wide"></span>
+        </div>
+        <div class="loading-panel skeleton-shot">
+          <span class="skeleton-line short"></span>
+          <span class="skeleton-box screenshot-shape"></span>
+        </div>
+      </section>
+
+      <section class="loading-grid board">
+        <div class="loading-panel skeleton-table">
+          <span class="skeleton-line short"></span>
+          <span class="skeleton-table-row"></span>
+          <span class="skeleton-table-row"></span>
+          <span class="skeleton-table-row"></span>
+          <span class="skeleton-table-row"></span>
+        </div>
+        <div class="loading-panel skeleton-detail">
+          <span class="skeleton-line short"></span>
+          <span class="skeleton-line title"></span>
+          <span class="skeleton-box detail-box"></span>
+          <span class="skeleton-box detail-box"></span>
+        </div>
+      </section>
+    </div>
+  </div>
+
   <main class="layout">
     <section class="hero panel">
       <div>
@@ -76,10 +134,11 @@
     </section>
 
     <section class="grid-board">
-      <div class="panel">
+      <div class="panel jobs-board-panel">
         <div class="section-header">
-          <h2>Jobs Board</h2>
+          <h2>Jobs Board <span id="jobs-count" class="section-count">(0)</span></h2>
           <div class="toolbar">
+            <button id="refresh-jobs" class="secondary small" type="button">Refresh Jobs</button>
             <select id="job-status-filter">
               <option value="">All statuses</option>
               <option value="in_progress">In progress</option>
@@ -100,7 +159,6 @@
                 <th>Title</th>
                 <th>Company</th>
                 <th>Score</th>
-                <th>Resume</th>
                 <th>Reason</th>
               </tr>
             </thead>
@@ -109,7 +167,7 @@
         </div>
       </div>
 
-      <div class="panel">
+      <div class="panel job-details-panel">
         <div class="section-header">
           <h2>Job Details</h2>
         </div>

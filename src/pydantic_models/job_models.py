@@ -252,6 +252,12 @@ class JobInfo(BaseModel):
     submitted_resume_path: Optional[str] = Field(
         default=None, description="Path of the resume file submitted with the application"
     )
+    applied_at: Optional[str] = Field(
+        default=None, description="When LinkedIn reports the application was submitted"
+    )
+    applied_at_text: Optional[str] = Field(
+        default=None, description="Raw application submitted time text from the job site"
+    )
 
     @field_validator("interest_score", mode="before")
     @classmethod

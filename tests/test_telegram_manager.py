@@ -10,6 +10,7 @@ import yaml
 from src.telegram.telegram_error_handler import AsyncTelegramSink
 from src.telegram.telegram_manager import (
     TelegramReportSender,
+    normalize_telegram_topic_id,
     process_captcha,
     receive_messages,
     send_captcha,
@@ -206,6 +207,7 @@ class TestTelegramReportSender:
                 "tg_token": "test_token",
                 "tg_chat_id": "123456",
                 "tg_report_topic_id": "789",
+                "tg_err_topic_id": "https://t.me/c/123456/456",
             }
             yield mock_dotenv
 
@@ -227,8 +229,66 @@ class TestTelegramReportSender:
 
             assert sender.chat_id == "123456"
             assert sender.report_topic_id == "789"
+            assert sender.err_topic_id == "456"
             assert sender.message == ""
             mock_bot_class.assert_called_once_with(token="test_token")
+
+    def test_normalize_telegram_topic_id(self):
+        assert normalize_telegram_topic_id(None) is None
+        assert normalize_telegram_topic_id("") is None
+        assert normalize_telegram_topic_id("789") == "789"
+        assert normalize_telegram_topic_id("https://t.me/c/3942580284/3") == "3"
+
+    def test_init_without_report_topic(self, mock_config):
+        """Test TelegramReportSender initialization for non-topic chats"""
+        with (
+            patch("src.telegram.telegram_manager.dotenv.dotenv_values") as mock_dotenv,
+            patch("src.telegram.telegram_manager.Bot") as mock_bot_class,
+        ):
+            mock_dotenv.return_value = {
+                "tg_token": "test_token",
+                "tg_chat_id": "123456",
+            }
+
+            sender = TelegramReportSender()
+
+        assert sender.chat_id == "123456"
+        assert sender.report_topic_id is None
+        mock_bot_class.assert_called_once_with(token="test_token")
+
+    @pytest.mark.asyncio
+    async def test_send_test_message(self, mock_env, mock_config):
+        """Test sending configured chat/topic diagnostic message"""
+        with patch("src.telegram.telegram_manager.Bot") as mock_bot_class:
+            mock_bot = AsyncMock()
+            mock_bot_class.return_value = mock_bot
+
+            sender = TelegramReportSender()
+            await sender.send_test_message("hello")
+
+        mock_bot.send_message.assert_called_once_with(
+            chat_id="123456",
+            message_thread_id="789",
+            text="hello",
+        )
+
+    @pytest.mark.asyncio
+    async def test_send_test_error_message(self, mock_env, mock_config):
+        """Test sending configured error chat/topic diagnostic message"""
+        with patch("src.telegram.telegram_manager.Bot") as mock_bot_class:
+            mock_bot = AsyncMock()
+            mock_bot_class.return_value = mock_bot
+
+            sender = TelegramReportSender()
+            await sender.send_test_error_message("boom")
+
+        mock_bot.send_message.assert_called_once_with(
+            chat_id="123456",
+            message_thread_id="456",
+            text="Error:\n```boom```",
+            parse_mode="Markdown",
+            disable_web_page_preview=True,
+        )
 
     @pytest.mark.asyncio
     async def test_send_telegram_report_basic(self, mock_env, mock_config):

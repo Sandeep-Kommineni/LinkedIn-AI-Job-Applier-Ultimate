@@ -4,7 +4,15 @@
 
 # LinkedIn AI Job Applier Ultimate
 
-🤖🔍 This project is an AI-powered bot that automates the process of applying for jobs on **LinkedIn** and **Indeed**. It intelligently parses your resume, customizes applications, answers questions using an LLM, gathers statistics of the most important for employers skills and sends you detailed reports, significantly streamlining your job search.
+![Python](https://img.shields.io/badge/python-3.12-blue)
+![License](https://img.shields.io/github/license/beatwad/LinkedIn-AI-Job-Applier-Ultimate)
+![Stars](https://img.shields.io/github/stars/beatwad/LinkedIn-AI-Job-Applier-Ultimate?style=social)
+![Last Commit](https://img.shields.io/github/last-commit/beatwad/LinkedIn-AI-Job-Applier-Ultimate)
+
+
+🤖 AI-powered bot that **auto-applies** to jobs on **LinkedIn** and **Indeed**. It parses your resume, generates tailored resumes per vacancy, answers application questions using an LLM (Gemini, OpenAI, Claude, Ollama), gathers statistics of the most important for employers skills and delivers detailed
+Telegram reports — fully automating your job search.
+
 
 This is an active fork of the original [Jobs_Applier_AI_Agent_AIHawk](https://github.com/feder-cr/Jobs_Applier_AI_Agent_AIHawk) project, which is currently inactive. This version introduces numerous new features, bug fixes, and performance improvements.
 
@@ -14,6 +22,10 @@ This bot uses the LinkedIn and Indeed UIs to apply for jobs. Both sites frequent
 I have no time to check this bot every day, so if you face any malfunction or have some questions about bot - feel free to open issue or contact me in Telegram chat 🚀
 
 Please ⭐ the repository if you find it useful. This is the only thing that motivates me to continue developing the project.
+
+## 🎥 Demo
+
+[![LinkedIn AI Job Applier Ultimate Demo](https://img.youtube.com/vi/HmbeI8u12MU/maxresdefault.jpg)](https://www.youtube.com/watch?v=HmbeI8u12MU)
 
 ### ⚠️ Note on Indeed
 
@@ -75,6 +87,7 @@ This project enhances the original codebase with several powerful new features:
 *   **☑️ Smart Checkbox Handling:** Automatically detects and answers checkbox questions in LinkedIn Easy Apply forms with intelligent context-aware responses.
 *   **🔗 Contextual Question Processing:** Considers previous answers when responding to follow-up questions like "If yes/no, who/when/where?" for more accurate and relevant responses.
 *   **🤖 AI-Powered Resume Parsing:** Automatically parses your resume from a text file into a structured format using an LLM (Large Language Model).
+*   **📄 Auto Resume Text Generation:** If `data/resumes/resume_text.txt` is missing but a PDF resume is present in `data/resumes/`, the bot automatically extracts the text from the PDF and generates a properly formatted `resume_text.txt` using the LLM — no manual transcription needed.
 *   **📄 New Resume Style:** Includes the modern "FAANGPath" resume style for generating professional-looking resumes.
 *   **📲 Telegram Integration:** Delivers comprehensive reports and error notifications directly to your Telegram chat after each run.
 *   **💡 Resume Recommendations:** Provides AI-generated suggestions to improve your resume based on job market trends.
@@ -218,6 +231,7 @@ This project enhances the original codebase with several powerful new features:
     *   `COLLECT_INFO_MODE`: If `True`, the bot doesn't apply to the jobs or create resumes and cover letters, only gathers information for interesting jobs and their skill statistics and saves them to the files data/output/interesting_jobs.yaml and data/output/skill_stat.yaml.
     *   `UPLOAD_RESUME`: *(Indeed only)* If `False`, the bot selects your Indeed on-site resume instead of uploading a file. If `True`, the bot uploads a resume file (ready-made PDF or auto-generated).
     *   `EASY_APPLY_ONLY_MODE`: *(LinkedIn only)* If `True`, bot applies only the jobs with Easy Apply. Else bot will apply to the jobs with Easy Apply and try to apply to the jobs with 3rd party applications. **WARNING**: applying to the jobs with 3rd-party applications is not guaranteed to be successful, but is guaranteed to consume at least 10-100x more tokens!
+    *   `IS_PREMIUM`: *(LinkedIn only)* If `True`, the bot uses the LinkedIn Premium Easy Apply flow. If `False` (default), the standard Easy Apply flow is used. Enable this if you have a LinkedIn Premium account and encounter issues with the default flow.
     *   `RESTART_EVERY_DAY`: *(LinkedIn only)* If `True`, bot will automatically restart the search every 24 hours when LinkedIn resets the search limits. So you don't have to restart it manually - just run & forget.
     *   `JOB_IS_INTERESTING_THRESH`: LLM evaluated the 'interest' level of the job from 1 to 100. If job 'interest' level not below this threshold - the job is considered interesting for bot. Otherwise not. Because of LinkedIn limits number of daily applications to 50, recommended value of this setting is 70+, so the bot will apply only to vacancies that match your resume
     *   `MINIMUM_WAIT_TIME_SEC`: Minimum time spent on one job application, this setting help to prevent ban for too frequent job applies
@@ -288,8 +302,12 @@ This project enhances the original codebase with several powerful new features:
     *   **raw resume text file** (`resume_text.txt`) which contains all available information about your resume in text format and is used to answer the questions and write cover letters (I find out that using full resume text for these tasks is more reliable + saves input token + you don't need to determine which resume section you have to use). **TIP**: Try to add to this file as much information about youself as possible - that will let bot to answer questions more precisely and better tailor your resume to a specific vacancy.
     *   **structured resume file** (`structured_resume.yaml`) which is used for tailored resume generation
 
-    Resume text file is mandatory, you need to create it by yourself. But with structured resume file you have two options:
-    *   **Automatic Parsing (recommended):** The bot will use the LLM to parse your resume text file into a structured format on the first run and save it in `data/resumes/structured_resume.yaml`. Just add raw resume text to your project and run the bot - it will do the rest.
+    You have two options for providing the resume text file:
+    *   **Automatic Generation from PDF (recommended for new users):** If `resume_text.txt` is missing but a PDF resume exists in `data/resumes/`, the bot will automatically extract the text from the PDF using an LLM and save it as `data/resumes/resume_text.txt` before the run starts. Just drop your resume PDF into `data/resumes/` and run the bot — no manual text editing required. Review the generated file afterwards and add any missing details (salary expectations, preferences, etc.) to improve answer quality.
+    *   **Manual creation:** Copy `examples/data/resumes/resume_text.txt` to `data/resumes/resume_text.txt` and fill it in by hand. **TIP:** The more detail you add, the more precisely the bot can answer application questions and tailor your resume.
+
+    With structured resume file you have two options:
+    *   **Automatic Parsing (recommended):** The bot will use the LLM to parse your resume text file into a structured format on the first run and save it in `data/resumes/structured_resume.yaml`. Just add raw resume text to your project and run the bot - it will do the rest. Also if you want to update your resume info - add it to `resume_text.txt`, delete `structured_resume.yaml` and run the bot again - it will create updated `structured_resume.yaml` file. Another way of auto creating structured resume is to run `uv run python src/resume_builder/resume_manager.py` command - it will create `structured_resume.yaml` file if it doesn't exist.
     *   **Manual Structure:** fill out file `structured_resume.yaml` manually for precise control. Why use this option instead of first? Because if you select the first option, all data from your resume text will be sent to the LLM to create the structured_resume file — for some people who care about their privacy this would be unacceptable. I want to point out that Automatic Parsing and Non-Easy Apply vacancies applying are the only two functions of this bot that send not anonymized user's personal information to LLM. All other bot functions anonymize personal information before sending it to LLM.
     Examples of `resume_text.txt` and `structured_resume.yaml` files can be found in `examples/data/resumes` folder
 
@@ -306,17 +324,17 @@ This project enhances the original codebase with several powerful new features:
     **I also recommend to test resume generation before starting applying jobs**.
 
     ### How to test resume generation using bot
-    1.  Fill file `data/resumes/resume_text.txt` with information from your resume. Example of resume_text.txt file can be found in `examples` folder.
-    2.  Run the bot to create the file `data/resumes/structured_resume.yaml` and fill it automatically or fill it manually.
-    3.  Run this command
+    1.  Fill file `data/resumes/resume_text.txt` with information from your resume. Example of resume_text.txt file can be found in `examples` folder. You can also fill `structured_resume.yaml` manually, but if you don't want to do it - just move to step 2.
+    2.  Run this command
 
         ```bash
-        python src/resume_builder/resume_manager.py
+        uv run python src/resume_builder/resume_manager.py
         ```
-    4.  Select resume style (first style FAANGPath is recommended).
-    5.  Output file is `test_generated_resume.pdf` in root directory
-    6.  Carefully read the resume, look for **No info**, **N/A** or **None** text in it. If you find it - that means that some critical information in your resume text is missing and you must add it to your resume file(s) and repeat the resume creation process.
-    7.  If you are satisfied with the quality of your resume - move the output file to any path you like (e.g. `data/resumes/resume.pdf`) and set `READY_MADE_RESUME_PATH` in `config/app_config.py` to that path. The bot will use it for every application.
+        If you don't have `structured_resume.yaml` file - bot will create it automatically using `resume_text.txt` file during this step.
+    3.  Select resume style (first style FAANGPath is recommended).
+    4.  Output file is `test_generated_resume.pdf` in root directory
+    5.  Carefully read the resume, look for **No info**, **N/A** or **None** text in it. If you find it - that means that some critical information in your resume text is missing and you must add it to your resume file(s) and repeat the resume creation process.
+    6.  If you are satisfied with the quality of your resume - move the output file to any path you like (e.g. `data/resumes/resume.pdf`) and set `READY_MADE_RESUME_PATH` in `config/app_config.py` to that path. The bot will use it for every application.
 
 ## ▶️ Usage
 
@@ -443,7 +461,7 @@ If you want a more detailed dashboard guide, see `docs/dashboard.md`.
 To run the networking tool that finds and connects with Open Networkers:
 
 ```bash
-python linkedin_connection_searcher.py
+uv run python linkedin_connection_searcher.py
 ```
 
 This tool will use the settings in `config/linkedin_connection_searcher_config.yaml` to search for potential connections on LinkedIn and send invitations automatically.

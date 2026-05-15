@@ -52,6 +52,11 @@ class ResumeManager:
             logger.info(f"Using resume style from config: '{RESUME_STYLE}'")
             return
 
+        if os.environ.get("DASHBOARD_RUN_ID"):
+            logger.info("Dashboard run detected, using default resume style")
+            self.choose_default_style()
+            return
+
         # Check if running in non-interactive mode (Docker, no TTY)
         if not self.is_interactive_mode():
             logger.info("Running in non-interactive mode (Docker/headless)")
@@ -131,11 +136,25 @@ if __name__ == "__main__":
             resume_structured_file = Path(RESUME_DIR) / "structured_resume.yaml"
             resume_text_file = Path(RESUME_DIR) / "resume_text.txt"
 
-            # Load structured resume
-            resume_structured = load_yaml_file(resume_structured_file)
             # Load resume text
             with open(resume_text_file, "r", encoding="utf-8") as f:
                 resume_text = f.read()
+
+            # Load or generate structured resume
+            try:
+                resume_structured = load_yaml_file(resume_structured_file)
+            except Exception as e:
+                if not str(e).startswith("File not found"):
+                    raise
+                from src.pydantic_models.prompt_models import ResumeStructure
+                from src.utils.utils import save_yaml_file
+
+                logger.info("Structured resume not found, generating from resume text...")
+                gpt_answerer_for_parse = GPTAnswerer(llm_api_key, llm_proxy)
+                resume_structured = gpt_answerer_for_parse.parse_resume(resume_text)
+                resume_structured = ResumeStructure(**resume_structured).model_dump()
+                save_yaml_file(resume_structured_file, resume_structured)
+                logger.info(f"Structured resume saved to {resume_structured_file}")
 
             # Set resume anonymizer and anonymize the resume information
             resume_anonymizer = ResumeAnonymizer(resume_structured)

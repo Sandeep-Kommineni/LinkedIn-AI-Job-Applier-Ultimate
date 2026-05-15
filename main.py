@@ -7,10 +7,9 @@ from pathlib import Path
 from threading import Lock
 
 import dotenv
+from pypdf import PdfReader
 
 # TODO: Create a tutorial video for the bot
-
-# TODO: move project to document DB like MongoDB
 
 
 # Try to import pynput for keyboard control (optional, not available in Docker)
@@ -23,7 +22,12 @@ except (ImportError, Exception):
     pynput_kb = None
 
 from config.app_config import JOB_SITE, RESTART_EVERY_DAY
-from config.constants import BROWSER_STORAGE_STATE, RESUME_DIR, SEARCH_CONFIG_FILE
+from config.constants import (
+    BROWSER_STORAGE_STATE,
+    RESUME_DIR,
+    RESUME_TEXT_TEMPLATE_FILE,
+    SEARCH_CONFIG_FILE,
+)
 from config.logger_config import logger
 from src.dashboard.runtime import StopRequested, emit_event, get_control_state, update_control_state
 
@@ -141,6 +145,33 @@ class ConfigValidator:
                 logger.warning("Resume template not found, creating new one")
                 return {}
             raise ConfigError(f"Structured resume validation error: {str(e)}")
+
+
+def generate_resume_text_from_pdf(secrets: dict) -> str:
+    """Find a PDF in RESUME_DIR, parse it, and write a formatted resume_text.txt using the LLM."""
+    pdf_files = list(Path(RESUME_DIR).glob("*.pdf"))
+    if not pdf_files:
+        return ""
+
+    pdf_path = pdf_files[0]
+    logger.info(f"Generating resume_text.txt from {pdf_path.name}")
+
+    reader = PdfReader(pdf_path)
+    raw_text = "\n".join(page.extract_text() or "" for page in reader.pages).strip()
+    if not raw_text:
+        logger.warning(f"Could not extract text from {pdf_path.name}")
+        return ""
+
+    template = Path(RESUME_TEXT_TEMPLATE_FILE).read_text(encoding="utf-8")
+
+    llm_answerer = GPTAnswerer(
+        secrets.get("llm_api_key"), secrets.get("llm_proxy"), secrets.get("llm_api_url")
+    )
+    resume_text = llm_answerer.generate_resume_text(raw_text, template)
+
+    RESUME_TEXT_FILE.write_text(resume_text, encoding="utf-8")
+    logger.info(f"resume_text.txt generated and saved to {RESUME_TEXT_FILE}")
+    return resume_text
 
 
 def on_press(key):
@@ -305,7 +336,7 @@ async def create_and_run_bot(
         resume_generator_manager = ResumeManager(llm_api_key, style_manager, resume_generator)
 
         resume_ready_made = READY_MADE_RESUME is not None and READY_MADE_RESUME.resolve().is_file()
-        if not resume_ready_made and not os.environ.get("DASHBOARD_RUN_ID"):
+        if not resume_ready_made:
             resume_generator_manager.choose_style()
 
         # Set search component
@@ -398,6 +429,8 @@ def main() -> None:
             secrets = config_validator.validate_secrets()
             search_config = config_validator.validate_search_config(SEARCH_CONFIG_FILE)
             resume_text = config_validator.validate_resume_text(RESUME_TEXT_FILE)
+            if not resume_text:
+                resume_text = generate_resume_text_from_pdf(secrets)
             resume_structured = config_validator.validate_resume_structured(RESUME_STRUCTURED_FILE)
 
             if not resume_text and not resume_structured:

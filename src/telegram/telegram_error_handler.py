@@ -69,6 +69,7 @@ class AsyncTelegramSink:
         self.max_retries = max_retries
         self.cooldown = cooldown  # Seconds between identical error notifications
         self.error_cache_file = "src/telegram/error_cache.yaml"
+        self._semaphore: asyncio.Semaphore | None = None
 
     async def _send_with_retry(self, message: str) -> bool:
         """Try to send a message. In case of an error, we wait exponentially longer."""
@@ -133,6 +134,12 @@ class AsyncTelegramSink:
 
     async def _process_message(self, message: str) -> None:
         """Main message processing logic"""
+        if self._semaphore is None:
+            self._semaphore = asyncio.Semaphore(1)
+        async with self._semaphore:
+            await self._process_message_inner(message)
+
+    async def _process_message_inner(self, message: str) -> None:
         try:
             # Extract error content and check for duplicates
             error_content = message.strip()

@@ -13,6 +13,9 @@ def test_index_serves_dashboard_page():
 
     assert response.status_code == 200
     assert "Operations Dashboard" in response.text
+    assert '<body class="dashboard-loading" aria-busy="true">' in response.text
+    assert 'id="dashboard-loading"' in response.text
+    assert "Loading dashboard data" in response.text
 
 
 def test_run_detail_page_serves_dashboard_page():
@@ -110,10 +113,13 @@ def test_run_screenshots_endpoint_returns_history(monkeypatch):
 
 def test_run_jobs_endpoint_returns_filtered_jobs(monkeypatch):
     monkeypatch.setattr(
-        "src.dashboard.server.get_run_jobs",
-        lambda run_id, status=None, search=None: [
-            {"run_id": run_id, "status": status, "job_title": search or "CTO"}
-        ],
+        "src.dashboard.server.get_run_jobs_payload",
+        lambda run_id, status=None, search=None: {
+            "run_id": run_id,
+            "jobs": [{"run_id": run_id, "status": status, "job_title": search or "CTO"}],
+            "filtered_count": 1,
+            "total_count": 3,
+        },
     )
 
     response = client.get("/api/runs/run-9/jobs?status=applied&search=cto")
@@ -122,23 +128,31 @@ def test_run_jobs_endpoint_returns_filtered_jobs(monkeypatch):
     assert response.json()["run_id"] == "run-9"
     assert response.json()["jobs"][0]["status"] == "applied"
     assert response.json()["jobs"][0]["job_title"] == "cto"
+    assert response.json()["filtered_count"] == 1
+    assert response.json()["total_count"] == 3
 
 
 def test_jobs_endpoint_passes_filters(monkeypatch):
     captured = {}
 
-    def fake_get_jobs(status=None, search=None):
+    def fake_get_jobs_payload(status=None, search=None):
         captured["status"] = status
         captured["search"] = search
-        return [{"status": status, "job_title": search}]
+        return {
+            "jobs": [{"status": status, "job_title": search}],
+            "filtered_count": 1,
+            "total_count": 4,
+        }
 
-    monkeypatch.setattr("src.dashboard.server.get_jobs", fake_get_jobs)
+    monkeypatch.setattr("src.dashboard.server.get_jobs_payload", fake_get_jobs_payload)
 
     response = client.get("/api/jobs?status=applied&search=cto")
 
     assert response.status_code == 200
     assert captured == {"status": "applied", "search": "cto"}
     assert response.json()["jobs"][0]["job_title"] == "cto"
+    assert response.json()["filtered_count"] == 1
+    assert response.json()["total_count"] == 4
 
 
 def test_search_config_update_returns_400_on_error(monkeypatch):
@@ -231,6 +245,18 @@ def test_screenshot_file_returns_file(tmp_path, monkeypatch):
 
     assert response.status_code == 200
     assert response.content == b"fake-image"
+
+
+def test_screenshot_returns_stable_byte_snapshot(tmp_path, monkeypatch):
+    screenshot = tmp_path / "latest.png"
+    screenshot.write_bytes(b"first-image")
+    monkeypatch.setattr("src.dashboard.server.LATEST_SCREENSHOT_FILE", screenshot)
+
+    response = client.get("/api/screenshot")
+
+    screenshot.write_bytes(b"updated-image")
+    assert response.status_code == 200
+    assert response.content == b"first-image"
 
 
 def test_event_stream_sends_initial_snapshot(monkeypatch):

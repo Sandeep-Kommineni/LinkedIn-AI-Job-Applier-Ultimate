@@ -22,6 +22,8 @@ class BaseEasyApplier(ABC):
         self.ready_made_resume_path = None
         self.submitted_resume_path = None
         self.db_manager = None
+        self.already_applied_at = None
+        self.already_applied_at_text = None
 
     @abstractmethod
     async def apply_to_job(self, job: Job) -> None:
@@ -65,6 +67,14 @@ class BaseEasyApplier(ABC):
             file_path_pdf = os.path.abspath(str(self.ready_made_resume_path))
             logger.info(f"Using ready-made resume: {file_path_pdf}")
         else:
+            generator_ready = (
+                getattr(self, "resume_generator_manager", None) is not None
+                and getattr(self.resume_generator_manager, "selected_style", None) is not None
+            )
+            if not generator_ready:
+                raise NoInfoException(
+                    "No resume generator style selected and no ready-made resume configured"
+                )
             file_path_pdf = os.path.join(
                 self.generated_resume_dir, f"CV_{job.company_name}_{job.job_title}.pdf"
             )
@@ -202,6 +212,9 @@ class BaseEasyApplier(ABC):
             and self.current_job.company_name is not None
             and self.current_job.company_name in answer
         )
+
+    def _is_no_info_answer(self, answer: Any) -> bool:
+        return isinstance(answer, str) and answer.strip().lower().startswith("no info")
 
     def _find_cached_question(
         self, question_text: str, question_type: str | None = None

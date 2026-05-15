@@ -5,8 +5,51 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from src.job_manager.easy_applier import NoInfoException
 from src.job_manager.linkedin.easy_applier_linkedin import LinkedInEasyApplier
 from src.pydantic_models.job_models import Job, Question
+
+LINKEDIN_DEFAULT_JOB_URL = "https://www.linkedin.com/jobs/view/4410066193"
+
+
+def build_linkedin_job_url(job_url_or_id: str | None = None) -> str:
+    if not job_url_or_id:
+        return LINKEDIN_DEFAULT_JOB_URL
+    job_url_or_id = job_url_or_id.strip()
+    if not job_url_or_id:
+        return LINKEDIN_DEFAULT_JOB_URL
+    if job_url_or_id.isdigit():
+        return f"https://www.linkedin.com/jobs/view/{job_url_or_id}"
+    return job_url_or_id
+
+
+def normalize_test_job_from_parsed_page(parsed_job: Job | None, job_url: str) -> Job:
+    job = parsed_job or Job()
+    if not job.url:
+        job.url = job_url
+    if not job.job_title:
+        job.job_title = "LinkedIn job"
+    if not job.company_name:
+        job.company_name = "Unknown company"
+    if not job.job_description:
+        job.job_description = "LinkedIn vacancy information was not parsed from the page."
+    if not job.apply_method:
+        job.apply_method = "Easy Apply"
+    return job
+
+
+def collect_apply_result_metadata(easy_applier: object, submitted_resume_path: object) -> dict:
+    metadata = {}
+    if isinstance(submitted_resume_path, str) and submitted_resume_path:
+        metadata["submitted_resume_path"] = submitted_resume_path
+    applied_at = getattr(easy_applier, "already_applied_at", None)
+    applied_at_text = getattr(easy_applier, "already_applied_at_text", None)
+    if isinstance(applied_at, str) and applied_at:
+        metadata["applied_at"] = applied_at
+    if isinstance(applied_at_text, str) and applied_at_text:
+        metadata["applied_at_text"] = applied_at_text
+    return metadata
+
 
 LINKEDIN_JOB_URL = "https://www.linkedin.com/jobs/view/123456"
 
@@ -79,10 +122,68 @@ class TestInit:
         assert applier.test_mode is False
         assert applier.all_questions == []
         assert applier.previous_question_texts == []
+        assert applier.submitted_resume_path is None
 
     def test_generated_dirs_are_subdirs(self, applier):
         assert applier.generated_resume_dir.name == "generated_resumes"
         assert applier.generated_cover_letter_dir.name == "generated_cover_letters"
+
+
+class TestDirectScriptHelpers:
+    def test_builds_job_url_from_id(self):
+        assert build_linkedin_job_url("4410514476") == (
+            "https://www.linkedin.com/jobs/view/4410514476"
+        )
+
+    def test_preserves_full_job_url(self):
+        url = "https://www.linkedin.com/jobs/view/4410514476"
+        assert build_linkedin_job_url(url) == url
+
+    def test_normalizes_parsed_job_without_overwriting_real_fields(self):
+        parsed_job = Job(
+            job_title="Head of AI",
+            company_name="Involved Solutions",
+            url="https://www.linkedin.com/jobs/view/4410514476",
+            job_description="Parsed description",
+        )
+
+        job = normalize_test_job_from_parsed_page(
+            parsed_job, "https://www.linkedin.com/jobs/view/4410514476"
+        )
+
+        assert job.job_title == "Head of AI"
+        assert job.company_name == "Involved Solutions"
+        assert job.job_description == "Parsed description"
+        assert job.apply_method == "Easy Apply"
+
+    def test_normalizes_missing_parsed_fields_with_generic_fallbacks(self):
+        job = normalize_test_job_from_parsed_page(
+            Job(), "https://www.linkedin.com/jobs/view/4410514476"
+        )
+
+        assert job.url == "https://www.linkedin.com/jobs/view/4410514476"
+        assert job.job_title == "LinkedIn job"
+        assert job.company_name == "Unknown company"
+        assert job.job_description
+        assert job.apply_method == "Easy Apply"
+
+    def test_collect_apply_result_metadata(self):
+        applier = MagicMock()
+        applier.already_applied_at = "2026-05-07T10:00:00"
+        applier.already_applied_at_text = "5 hours ago"
+
+        assert collect_apply_result_metadata(applier, "/tmp/resume.pdf") == {
+            "submitted_resume_path": "/tmp/resume.pdf",
+            "applied_at": "2026-05-07T10:00:00",
+            "applied_at_text": "5 hours ago",
+        }
+
+    def test_collect_apply_result_metadata_omits_empty_values(self):
+        applier = MagicMock()
+        applier.already_applied_at = None
+        applier.already_applied_at_text = None
+
+        assert collect_apply_result_metadata(applier, None) == {}
 
 
 class TestCheckForPremiumRedirect:
@@ -180,13 +281,23 @@ class TestApplyToJob:
 class TestJobEasyApply:
     @pytest.mark.asyncio
     async def test_returns_skip_when_no_easy_apply_button(self, applier, test_job):
+        applier._is_already_applied = AsyncMock(return_value=False)
         applier._find_easy_apply_button = AsyncMock(return_value=False)
         with patch("src.job_manager.linkedin.easy_applier_linkedin.async_pause"):
             result = await applier.job_easy_apply(test_job)
         assert result[0] == "Skip"
 
     @pytest.mark.asyncio
+    async def test_returns_skip_when_already_applied_status_is_present(self, applier, test_job):
+        applier._is_already_applied = AsyncMock(return_value=True)
+
+        result = await applier.job_easy_apply(test_job)
+
+        assert result == ("Skip", "Already applied to this job")
+
+    @pytest.mark.asyncio
     async def test_returns_success_on_complete_application(self, applier, test_job):
+        applier._is_already_applied = AsyncMock(return_value=False)
         applier._find_easy_apply_button = AsyncMock(return_value=True)
         applier._click_continue_applying_button = AsyncMock()
         applier.check_for_premium_redirect = AsyncMock(return_value=False)
@@ -199,6 +310,7 @@ class TestJobEasyApply:
 
     @pytest.mark.asyncio
     async def test_returns_error_on_unexpected_exception(self, applier, test_job):
+        applier._is_already_applied = AsyncMock(return_value=False)
         applier._find_easy_apply_button = AsyncMock(return_value=True)
         applier._click_continue_applying_button = AsyncMock()
         applier.check_for_premium_redirect = AsyncMock(return_value=False)
@@ -210,6 +322,23 @@ class TestJobEasyApply:
                     result = await applier.job_easy_apply(test_job)
         assert result[0] == "Error"
         assert "form error" in result[1]
+
+    @pytest.mark.asyncio
+    async def test_returns_skip_when_easy_apply_dialog_does_not_open(self, applier, test_job):
+        applier._is_already_applied = AsyncMock(return_value=False)
+        applier._find_easy_apply_button = AsyncMock(return_value=True)
+        applier._click_continue_applying_button = AsyncMock()
+        applier.check_for_premium_redirect = AsyncMock(return_value=False)
+        applier._fill_application_form = AsyncMock(
+            side_effect=NoInfoException("Easy Apply dialog did not open")
+        )
+        with patch("src.job_manager.linkedin.easy_applier_linkedin.async_pause"):
+            with patch("src.job_manager.linkedin.easy_applier_linkedin.capture_page_screenshot"):
+                with patch("src.job_manager.linkedin.easy_applier_linkedin.debug_capture"):
+                    result = await applier.job_easy_apply(test_job)
+
+        assert result[0] == "Skip"
+        assert "Easy Apply dialog did not open" in result[1]
 
 
 class TestNextOrSubmit:
@@ -300,6 +429,52 @@ class TestIsUploadField:
         empty_loc.all = AsyncMock(return_value=[])
         element.locator = MagicMock(return_value=empty_loc)
         result = await applier._is_upload_field(element)
+        assert result is False
+
+
+class TestAlreadyAppliedDetection:
+    @pytest.mark.asyncio
+    async def test_detects_application_submitted_status(self, applier):
+        with patch(
+            "src.job_manager.linkedin.easy_applier_linkedin.find_element_safely",
+            new_callable=AsyncMock,
+            return_value=MagicMock(),
+        ):
+            result = await applier._is_already_applied()
+
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_extracts_application_submitted_date(self, applier):
+        date_locator = AsyncMock()
+        date_locator.count = AsyncMock(return_value=1)
+        date_locator.inner_text = AsyncMock(return_value="18 hours ago")
+        date_locator_container = MagicMock()
+        date_locator_container.first = date_locator
+        submitted_element = MagicMock()
+        submitted_element.locator.return_value = date_locator_container
+
+        with patch(
+            "src.job_manager.linkedin.easy_applier_linkedin.find_element_safely",
+            new_callable=AsyncMock,
+            return_value=submitted_element,
+        ) as mock_find:
+            result = await applier._is_already_applied()
+
+        assert result is True
+        assert applier.already_applied_at_text == "18 hours ago"
+        assert applier.already_applied_at is not None
+        assert not mock_find.call_args.args[1].startswith("xpath=")
+
+    @pytest.mark.asyncio
+    async def test_returns_false_when_application_status_missing(self, applier):
+        with patch(
+            "src.job_manager.linkedin.easy_applier_linkedin.find_element_safely",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            result = await applier._is_already_applied()
+
         assert result is False
 
 
@@ -494,6 +669,29 @@ class TestIsNumericField:
         result = await applier._is_numeric_field(field)
         assert result is False
 
+    @pytest.mark.asyncio
+    async def test_detects_keyword_in_question_text(self, applier):
+        field = AsyncMock()
+        field.get_attribute = AsyncMock(side_effect=lambda attr: "text" if attr == "type" else "")
+        result = await applier._is_numeric_field(field, "what is your expected salary?")
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_keyword_not_matched_as_substring(self, applier):
+        field = AsyncMock()
+        field.get_attribute = AsyncMock(side_effect=lambda attr: "text" if attr == "type" else "")
+        # "rate" is a substring of "demonstrates" — must not match
+        question = "include github code samples and any evaluation or benchmark work that demonstrates your technical rigor."
+        result = await applier._is_numeric_field(field, question)
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_keyword_matched_as_whole_word(self, applier):
+        field = AsyncMock()
+        field.get_attribute = AsyncMock(side_effect=lambda attr: "text" if attr == "type" else "")
+        result = await applier._is_numeric_field(field, "what is your hourly rate?")
+        assert result is True
+
 
 class TestSelectDropdownOption:
     @pytest.mark.asyncio
@@ -557,8 +755,12 @@ class TestHandleTermsOfService:
         label.text_content = AsyncMock(return_value="I agree to the terms of service")
         label.click = AsyncMock()
 
+        checkbox_locator = MagicMock()
+        checkbox_locator.all = AsyncMock(return_value=["checkbox"])
+        checkbox_locator.first = label
+
         section = MagicMock()
-        section.locator = MagicMock(return_value=MagicMock(first=label))
+        section.locator = MagicMock(return_value=checkbox_locator)
 
         result = await applier._handle_terms_of_service(section)
 
@@ -647,6 +849,105 @@ class TestTextboxCaching:
         assert result is True
         text_field.fill.assert_called_once_with("ziad.nahas@gmail.com")
         applier.gpt_answerer.answer_question_textual_wide_range.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_ignores_cached_no_info_and_uses_resume_answer(self, applier):
+        text_field = AsyncMock()
+        text_field.get_attribute = AsyncMock(
+            side_effect=lambda attr: "text" if attr == "type" else None
+        )
+        text_field.fill = AsyncMock()
+
+        label = AsyncMock()
+        label.text_content = AsyncMock(return_value="Middle name")
+        section = MagicMock()
+        section.locator.return_value.all = AsyncMock(return_value=[label])
+
+        applier.all_questions = [
+            Question(question="middle name", question_type="textbox", answer=" No info")
+        ]
+        applier.gpt_answerer.answer_question_textual_wide_range.return_value = "Example"
+
+        with (
+            patch(
+                "src.job_manager.linkedin.easy_applier_linkedin.find_elements_safely",
+                new_callable=AsyncMock,
+                return_value=[text_field],
+            ),
+            patch(
+                "src.job_manager.linkedin.easy_applier_linkedin.find_element_safely",
+                new_callable=AsyncMock,
+                side_effect=[label],
+            ),
+            patch.object(applier, "_process_autocomplete_suggestions", new_callable=AsyncMock),
+        ):
+            result = await applier._find_and_handle_textbox_question(section)
+
+        assert result is True
+        text_field.fill.assert_called_once_with("Example")
+        applier.gpt_answerer.answer_question_textual_wide_range.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_skips_optional_textbox_when_no_info_available(self, applier):
+        text_field = AsyncMock()
+        text_field.get_attribute = AsyncMock(
+            side_effect=lambda attr: "text" if attr == "type" else None
+        )
+        text_field.fill = AsyncMock()
+
+        label = AsyncMock()
+        label.text_content = AsyncMock(return_value="Middle name")
+        section = MagicMock()
+        section.locator.return_value.all = AsyncMock(return_value=[label])
+
+        applier.gpt_answerer.answer_question_textual_wide_range.return_value = "No info"
+
+        with (
+            patch(
+                "src.job_manager.linkedin.easy_applier_linkedin.find_elements_safely",
+                new_callable=AsyncMock,
+                return_value=[text_field],
+            ),
+            patch(
+                "src.job_manager.linkedin.easy_applier_linkedin.find_element_safely",
+                new_callable=AsyncMock,
+                side_effect=[label],
+            ),
+        ):
+            result = await applier._find_and_handle_textbox_question(section)
+
+        assert result is True
+        text_field.fill.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_required_textbox_still_fails_when_no_info_available(self, applier):
+        text_field = AsyncMock()
+        text_field.get_attribute = AsyncMock(
+            side_effect=lambda attr: "true" if attr == "aria-required" else None
+        )
+        text_field.fill = AsyncMock()
+
+        label = AsyncMock()
+        label.text_content = AsyncMock(return_value="Legal first name")
+        section = MagicMock()
+        section.locator.return_value.all = AsyncMock(return_value=[label])
+
+        applier.gpt_answerer.answer_question_textual_wide_range.return_value = "No info"
+
+        with (
+            patch(
+                "src.job_manager.linkedin.easy_applier_linkedin.find_elements_safely",
+                new_callable=AsyncMock,
+                return_value=[text_field],
+            ),
+            patch(
+                "src.job_manager.linkedin.easy_applier_linkedin.find_element_safely",
+                new_callable=AsyncMock,
+                side_effect=[label],
+            ),
+        ):
+            with pytest.raises(NoInfoException, match="legal first name"):
+                await applier._find_and_handle_textbox_question(section)
 
 
 class TestDropdownCaching:

@@ -18,7 +18,6 @@ from langchain_core.messages.ai import AIMessage
 from langchain_core.output_parsers import PydanticOutputParser, StrOutputParser
 from langchain_core.prompt_values import StringPromptValue
 from langchain_core.prompts import ChatPromptTemplate
-from Levenshtein import distance
 from pydantic import BaseModel
 
 import src.llm.prompts as prompts
@@ -577,6 +576,7 @@ class GPTAnswerer:
                 prompts.linkedin_message_classification_template,
                 LinkedInMessageClassification,
             ),
+            "generate_resume_text": self._create_chain(prompts.generate_resume_text_template),
         }
 
     @staticmethod
@@ -590,10 +590,17 @@ class GPTAnswerer:
         if not options:
             return "no info"
         logger.info(f"Searching for best match for text: '{text}' in options: {options}")
-        distances = [(option, distance(text.lower(), option.lower())) for option in options]
-        best_option = min(distances, key=lambda x: x[1])[0]
-        logger.info(f"Best match found: {best_option}")
-        return best_option
+        text_lower = text.lower()
+        for option in options:
+            if text_lower == option.lower():
+                logger.info(f"Best match found: {option}")
+                return option
+        for option in options:
+            if text_lower in option.lower() or option.lower() in text_lower:
+                logger.info(f"Best match found: {option}")
+                return option
+        logger.info(f"No match found for '{text}' in options, returning no info")
+        return "no info"
 
     @staticmethod
     def _remove_placeholders(text: str) -> str:
@@ -763,8 +770,18 @@ class GPTAnswerer:
             return ""
 
         months = {
-            "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
-            "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+            "jan": 1,
+            "feb": 2,
+            "mar": 3,
+            "apr": 4,
+            "may": 5,
+            "jun": 6,
+            "jul": 7,
+            "aug": 8,
+            "sep": 9,
+            "oct": 10,
+            "nov": 11,
+            "dec": 12,
         }
         parts = timestamp_str.strip().split()
         if len(parts) < 2:
@@ -789,11 +806,19 @@ class GPTAnswerer:
             return ""
 
         category = (classification or {}).get("category")
-        apology_reason = (preferences.get("old_message_apology_reason") or "you've been busy with multiple projects").strip()
+        apology_reason = (
+            preferences.get("old_message_apology_reason")
+            or "you've been busy with multiple projects"
+        ).strip()
         follow_up_enabled = preferences.get("old_job_message_follow_up_enabled", True)
         follow_up_text = (
-            preferences.get("old_job_message_follow_up_text") or "ask if the opportunity is still available"
-        ).strip().rstrip(".")
+            (
+                preferences.get("old_job_message_follow_up_text")
+                or "ask if the opportunity is still available"
+            )
+            .strip()
+            .rstrip(".")
+        )
         if category != "job_offer_to_me":
             return (
                 f"- This message was sent over {threshold_days} days ago. Start the reply with a brief, warm "
@@ -837,6 +862,12 @@ class GPTAnswerer:
         )
         logger.debug(f"Structured resume parsing completed: {output}")
         return output.model_dump()
+
+    def generate_resume_text(self, raw_text: str, template: str) -> str:
+        """Generate formatted resume_text.txt content from raw PDF text using the given template."""
+        logger.info("Generating resume text from raw PDF content")
+        chain = self.chains["generate_resume_text"]
+        return chain.invoke({"raw_text": raw_text, "template": template})
 
     def extract_skills_from_vacancy(self, job_description: str) -> list[str]:
         """Extract skills from vacancy"""
@@ -965,6 +996,12 @@ class GPTAnswerer:
             all_digits = re.sub(r"\D", "", stripped)
             if all_digits:
                 return all_digits
+        # Match salary ranges like $60000-$80000, £280-£560, or $60,000-$80,000
+        range_match = re.search(r"[^\d,]?([\d,]+)\s*-\s*[^\d,]?([\d,]+)", output_str)
+        if range_match:
+            low = range_match.group(1).replace(",", "")
+            high = range_match.group(2).replace(",", "")
+            return f"{low}-{high}"
         numbers = re.findall(r"\d+", output_str)
         if numbers:
             return str(numbers[0])
@@ -1394,14 +1431,76 @@ class GPTAnswerer:
 
 
 if __name__ == "__main__":
+    import yaml
+
     load_dotenv()
     api_key = os.getenv("llm_api_key", "")
     llm_proxy = os.getenv("llm_proxy", "")
     llm_api_url = os.getenv("llm_api_url", None)
 
-    adapter = AIAdapter(api_key, llm_proxy, llm_api_url)
-    prompt = ChatPromptTemplate.from_messages(
-        [("human", "Say 'model works correctly' and nothing else.")]
-    ).format_prompt()
-    response = adapter.invoke(prompt)
-    print(f"Model response: {response.content}")
+    resume_dir = Path(RESUME_DIR)
+    resume_text_path = resume_dir / "resume_text.txt"
+    resume_structured_path = resume_dir / "structured_resume.yaml"
+
+    with open(resume_text_path, "r", encoding="utf-8") as f:
+        resume_text = f.read()
+
+    with open(resume_structured_path, "r", encoding="utf-8") as f:
+        resume_structured = yaml.safe_load(f)
+    resume_structured = ResumeStructure(**resume_structured).model_dump()
+
+    answerer = GPTAnswerer(llm_api_key=api_key, llm_proxy=llm_proxy, llm_api_url=llm_api_url)
+    answerer.set_resume(resume_structured, resume_text)
+
+    test_cases = [
+        {
+            "type": "textual",
+            "question": "Tell me about your educational background.",
+        },
+        {
+            "type": "numeric",
+            "question": "How many years of experience do you have with Python?",
+        },
+        {
+            "type": "numeric",
+            "question": "What are your salary expectations (annual, USD)?",
+        },
+        {
+            "type": "numeric",
+            "question": "What are your salary expectations (monthly, EUR)?",
+        },
+        {
+            "type": "numeric",
+            "question": "What are your salary expectations (daily, GBP)?",
+        },
+        {
+            "type": "radio",
+            "question": "What is your highest level of education?",
+            "options": ["High School", "Bachelor's Degree", "Master's Degree", "PhD"],
+        },
+        {
+            "type": "checkbox",
+            "question": "Which of the following programming languages are you proficient in?",
+            "options": ["Python", "Java", "C++", "JavaScript", "Go", "Rust"],
+        },
+    ]
+
+    for case in test_cases:
+        print(f"\n{'=' * 60}")
+        print(f"Type: {case['type']}")
+        print(f"Question: {case['question']}")
+        if "options" in case:
+            print(f"Options: {case['options']}")
+        print("-" * 60)
+
+        q = case["question"]
+        if case["type"] == "textual":
+            answer = answerer.answer_question_textual_wide_range(q, [])
+        elif case["type"] == "numeric":
+            answer = answerer.answer_question_numeric(q, [])
+        elif case["type"] == "radio":
+            answer = answerer.select_one_answer_from_options(q, case["options"], [])
+        elif case["type"] == "checkbox":
+            answer = answerer.select_many_answers_from_options(q, case["options"], [])
+
+        print(f"Answer: {answer}")

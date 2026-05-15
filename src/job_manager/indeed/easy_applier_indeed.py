@@ -62,6 +62,7 @@ class IndeedEasyApplier(BaseEasyApplier):
         self.resume_dir = resume_dir
         self.cover_letter_dir = cover_letter_dir
         self.test_mode = test_mode
+        self.submitted_resume_path = None
         self.all_questions: List[Question] = self._load_questions()
         self.previous_question_texts: List[str] = []
         self.generated_resume_dir = Path(resume_dir) / "generated_resumes"
@@ -610,7 +611,7 @@ class IndeedEasyApplier(BaseEasyApplier):
                 raw = self.gpt_answerer.answer_question_date(
                     question_text, self.previous_question_texts[:-1]
                 )
-                if raw.lower().startswith("no info"):
+                if self._is_no_info_answer(raw):
                     raise NoInfoException(f"No info found for question: {question_text}")
                 answer = self._parse_date_to_mmddyyyy(raw)
                 self._save_questions(
@@ -644,13 +645,32 @@ class IndeedEasyApplier(BaseEasyApplier):
         logger.warning(f"Could not parse date '{date_str}', using as-is")
         return date_str
 
-    async def _is_numeric_field(self, field: Any) -> bool:
+    _NUMERIC_QUESTION_KEYWORDS = (
+        "salary",
+        "compensation",
+        "pay",
+        "wage",
+        "rate",
+        "earnings",
+        "years of experience",
+        "how many years",
+        "how many months",
+        "number of",
+        "how many",
+        "gpa",
+        "grade point",
+    )
+
+    async def _is_numeric_field(self, field: Any, question_text: str = "") -> bool:
         """Check if a form field is a numeric (number) question on Indeed"""
         field_type = (await field.get_attribute("type") or "").lower()
         field_id = (await field.get_attribute("id") or "").lower()
         inputmode = (await field.get_attribute("inputmode") or "").lower()
-        return (
-            field_type == "number" or inputmode == "numeric" or field_id.startswith("number-input-")
+        if field_type == "number" or inputmode == "numeric" or field_id.startswith("number-input-"):
+            return True
+        q = question_text.lower()
+        return any(
+            re.search(r"\b" + re.escape(kw) + r"\b", q) for kw in self._NUMERIC_QUESTION_KEYWORDS
         )
 
     async def _find_and_handle_textbox_question(self, section: Any) -> bool:
@@ -663,7 +683,7 @@ class IndeedEasyApplier(BaseEasyApplier):
         question_text = await get_clean_text(section)
         try:
             self.previous_question_texts.append(question_text)
-            is_numeric = await self._is_numeric_field(text_input)
+            is_numeric = await self._is_numeric_field(text_input, question_text)
             question_type = "numeric" if is_numeric else "text"
             cached = self._find_cached_question(question_text, question_type)
             existing_answer = cached.answer if cached else None
@@ -674,7 +694,7 @@ class IndeedEasyApplier(BaseEasyApplier):
                 answer = self.gpt_answerer.answer_question_numeric(
                     question_text, self.previous_question_texts[:-1]
                 )
-                if answer.lower().startswith("no info"):
+                if self._is_no_info_answer(answer):
                     raise NoInfoException(f"No info found for question: {question_text}")
                 self._save_questions(
                     Question(question_type="numeric", question=question_text, answer=answer)
@@ -683,7 +703,7 @@ class IndeedEasyApplier(BaseEasyApplier):
                 answer = self.gpt_answerer.answer_question_textual_wide_range(
                     question_text, self.previous_question_texts[:-1]
                 )
-                if answer.lower().startswith("no info"):
+                if self._is_no_info_answer(answer):
                     raise NoInfoException(f"No info found for question: {question_text}")
                 answer = self.resume_anonymizer.deanonymize_text(answer)
                 self._save_questions(
@@ -765,7 +785,7 @@ class IndeedEasyApplier(BaseEasyApplier):
                 if any(
                     sel.lower() in label_text.lower() or label_text.lower() in sel.lower()
                     for sel in selected_options
-                    if not sel.lower().startswith("no info")
+                    if not self._is_no_info_answer(sel)
                 ):
                     if not await cb.is_checked():
                         cb_id = await cb.get_attribute("id")
@@ -826,7 +846,7 @@ class IndeedEasyApplier(BaseEasyApplier):
                 answer = self.gpt_answerer.select_one_answer_from_options(
                     question_text, option_texts, self.previous_question_texts[:-1]
                 )
-                if answer.lower().startswith("no info"):
+                if self._is_no_info_answer(answer):
                     raise NoInfoException(f"No info found for question: {question_text}")
                 self._save_questions(
                     Question(question_type="radio", question=question_text, answer=answer)
@@ -897,7 +917,7 @@ class IndeedEasyApplier(BaseEasyApplier):
                 answer = self.gpt_answerer.select_one_answer_from_options(
                     question_text, option_texts, self.previous_question_texts[:-1]
                 )
-                if answer.lower().startswith("no info"):
+                if self._is_no_info_answer(answer):
                     raise NoInfoException(f"No info found for question: {question_text}")
                 self._save_questions(
                     Question(question_type="dropdown", question=question_text, answer=answer)
@@ -1045,7 +1065,7 @@ class IndeedEasyApplier(BaseEasyApplier):
                     current_value,
                     self.previous_question_texts,
                 )
-                if answer.lower().startswith("no info"):
+                if self._is_no_info_answer(answer):
                     raise NoInfoException(
                         f"Can't fix error: {error_text}. No info for question: {question_text}"
                     )
@@ -1142,7 +1162,7 @@ if __name__ == "__main__":
             resume_text = resume_anonymizer.anonymize_text(resume_text)
 
             gpt_answerer.set_resume(resume_structured, resume_text)
-            gpt_answerer.set_job(test_job, is_test=True)
+            gpt_answerer.set_job(test_job.model_dump(), is_test=True)
 
             # Initialize resume generator manager
             style_manager = StyleManager()

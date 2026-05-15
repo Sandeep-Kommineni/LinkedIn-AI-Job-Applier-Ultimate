@@ -5,20 +5,20 @@ from contextlib import asynccontextmanager
 from typing import Any, Dict
 
 from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from config.app_config import JOB_SITE
 from src.dashboard.data_service import (
     get_app_config,
-    get_jobs,
+    get_jobs_payload,
     get_live_state,
     get_messages,
     get_run_detail,
     get_run_events,
     get_run_history,
-    get_run_jobs,
+    get_run_jobs_payload,
     get_run_screenshots,
     get_search_config,
     get_summary,
@@ -102,7 +102,7 @@ async def jobs(
     status: str | None = Query(default=None),
     search: str | None = Query(default=None),
 ) -> JSONResponse:
-    return JSONResponse({"jobs": get_jobs(status=status, search=search)})
+    return JSONResponse(get_jobs_payload(status=status, search=search))
 
 
 @app.get("/api/messages")
@@ -154,9 +154,7 @@ async def run_jobs(
     status: str | None = Query(default=None),
     search: str | None = Query(default=None),
 ) -> JSONResponse:
-    return JSONResponse(
-        {"run_id": run_id, "jobs": get_run_jobs(run_id=run_id, status=status, search=search)}
-    )
+    return JSONResponse(get_run_jobs_payload(run_id=run_id, status=status, search=search))
 
 
 @app.get("/api/config")
@@ -215,7 +213,7 @@ async def process() -> JSONResponse:
 async def screenshot():
     if not LATEST_SCREENSHOT_FILE.exists():
         return JSONResponse({"available": False}, status_code=404)
-    return FileResponse(LATEST_SCREENSHOT_FILE)
+    return Response(content=LATEST_SCREENSHOT_FILE.read_bytes(), media_type="image/png")
 
 
 @app.get("/api/screenshot-file")
@@ -228,7 +226,7 @@ async def screenshot_file(path: str = Query(...)):
 
     if not file_path.exists() or not file_path.is_file():
         raise HTTPException(status_code=404, detail="Screenshot not found")
-    return FileResponse(file_path)
+    return Response(content=file_path.read_bytes(), media_type="image/png")
 
 
 @app.get("/api/events/stream")

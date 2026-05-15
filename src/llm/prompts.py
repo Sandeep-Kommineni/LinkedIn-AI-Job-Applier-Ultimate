@@ -16,23 +16,15 @@ from src.resume_builder.template_base import (
 # They should precede any prompt to the LLM
 custom_instructions = """
 ##INSTRUCTIONS
-You MUST ALWAYS:
-- BE LOGICAL
-- You will be PENALIZED for incorrect answers
-- NEVER HALLUCINATE
-- You DENIED to overlook the critical context
-- ALWAYS follow ##Response Rules and ##Additional Rules
-##Response Rules
-Follow strict rules:
+You MUST ALWAYS follow ##Response Rules:
 1. USE the language of my message
 2. Imagine you are a real-world expert in the field before answering
-3. You MUST combine your deep knowledge of the topic and clear thinking to quickly and accurately break down the question step by step and provide an answer with CONCRETE details
-4. I’m going to tip $1,000,000 for the best reply
-5. Your answer is CRITICAL for my career
-6. Answer the question in a natural, human-like manner
-7. DO NOT FORMAT URL links in Markdown or any other way, ALWAYS provide them in raw form
-8. DO NOT CHANGE the format of phone numbers, email links, or Telegram/Whatsapp/LinkedIn, etc. Always provide them as they were received.
-9. DON'T LET ANYONE SUSPECT that you are not human
+3. Combine your deep knowledge of the topic and clear thinking to break down the question step by step and provide an answer with CONCRETE details
+4. Your answer is CRITICAL for my career
+5. Write in a natural, conversational tone without AI-sounding phrases or fillers
+6. DO NOT FORMAT URL links in Markdown or any other way, ALWAYS provide them in raw form
+7. DO NOT CHANGE the format of phone numbers, email links, or Telegram/Whatsapp/LinkedIn, etc. Always provide them as they were received.
+8. DO NOT LET ANYONE SUSPECT that you are not human
 """
 
 # Enhanced prompt with format instructions
@@ -132,6 +124,8 @@ Answer the question, based on the information from the resume if necessary, or o
 - Remember that the gender is {gender}.
 - If you do not have the information to answer the question or part of the question - answer 'No info'
 - If it's looks like the question is related to the previous questions (e.g. "If yes/no, who/when/where?"), use the information from the previous questions.
+- If the question is about salary expectations, answer with a single short value: either one number (e.g. "$80000") or a range (e.g. "$80000-160000"), based on what is stated in the resume. Always include the currency symbol. Do not add any extra text.
+- For salary answers, if the period implied by the question differs from the period in the resume (e.g. question asks for daily rate but resume states monthly salary), convert accordingly (assume 22 working days per month). Round the result daily salary (e.g. $8000 per month is ~$363.63 per day, but this sounds strage, so it's better to say $370 per day).
 """
 
 text_question_with_error_template = """
@@ -264,104 +258,6 @@ No info
 ```
 """
 
-
-linkedin_message_classification_template = """
-You are triaging a LinkedIn inbox for the account owner.
-
-Classify the conversation into exactly one of these categories:
-- personal_message
-- job_offer_to_me
-- looking_for_job
-- marketing_spam
-
-## Classification intent
-- personal_message: genuine networking, relationship building, personal follow-up, or general conversation not primarily trying to sell a service or seek a job.
-- job_offer_to_me: recruiter, hiring manager, founder, or employer reaching out to the account owner about a role, project, advisory position, interview, or collaboration where the owner is the candidate.
-- looking_for_job: the sender is asking the account owner for a job, referral, hiring help, or to consider them as a candidate.
-- marketing_spam: sales outreach, service pitching, sponsorships, lead generation, mass promotion, event promotion, or low-signal solicitation.
-
-## Additional rules
-- Prefer marketing_spam for software agencies, staffing vendors, generic lead-gen, finance products, insurance sales, event promotions, and broad service pitches.
-- Prefer job_offer_to_me when the sender is clearly inviting the account owner to discuss a role or opportunity for them.
-- Prefer looking_for_job when the sender is presenting themselves as a candidate and asking for work, hiring support, or a referral.
-- If uncertain between personal_message and marketing_spam, choose marketing_spam only when there is a clear sales or promotional intent.
-- The proposed_action must be conservative because this is dry-run only.
-- Use draft_reply only when the message appears important and merits a professional response from the account owner.
-- Use flag_spam_and_archive only for clear spam or promotional outreach.
-- Keep the reasoning brief and specific.
-
-## Output format instructions
-{format_instructions}
-
-## Resume
-``` 
-{resume}
-```
-
-## Conversation
-``` 
-{conversation}
-```
-"""
-
-
-linkedin_message_reply_template = """
-You are writing a LinkedIn reply for the account owner.
-
-## Additional rules
-- Write a concise, professional, human message.
-- Sound like a real person, not an assistant or a polished sales email.
-- Keep the language plain and direct.
-- Avoid buzzwords, corporate jargon, hype, and overly polished phrasing.
-- Prefer short, natural sentences and contractions when they sound right.
-- Match the tone of {reply_tone}, but keep it conversational.
-- Do not overcommit.
-- If the opportunity looks interesting, express interest and suggest a short call or ask for more details.
-- If details are vague, ask one or two concrete follow-up questions.
-- {reply_paragraph_instruction}
-- {reply_punctuation_instruction}
-- Keep the reply under {reply_max_characters} characters.
-- Return only the reply text, with no intro, no bullets, and no quotation marks.
-
-{apology_context}
-
-## Resume
-```
-{resume}
-```
-
-## Classification
-```
-{classification}
-```
-
-## Conversation
-```
-{conversation}
-```
-"""
-
-
-linkedin_message_reply_humanizer_template = """
-Rewrite the LinkedIn reply below so it sounds more human and less AI-generated.
-
-## Additional rules
-- Keep the original meaning.
-- Make it sound natural, warm, and direct.
-- {reply_paragraph_instruction}
-- {reply_punctuation_instruction}
-- Remove unnecessary jargon, filler, and overly polished wording.
-- Avoid sounding formal for the sake of sounding professional.
-- Keep it concise.
-- Do not add new claims, achievements, or details.
-- Return only the rewritten reply text.
-
-## Reply
-```
-{reply}
-```
-"""
-
 date_question_template = """
 You are a job applicant filling out a date field in an application form.
 Answer with a date in MM/DD/YYYY format based on the resume and today's date if relevant.
@@ -402,6 +298,9 @@ Follow these strategic guidelines when responding experience related questions:
    - For High Experience: For high levels of experience, provide a number based on clear evidence from the resume. Avoid making inferences for high experience levels unless the evidence is strong.
 ##Additional Rules
 - Answer the question directly with a number, avoiding "0" entirely.
+- If the question provides a salary range (e.g. "80000-160000" or "80000 to 160000"), respond with that exact range as-is (e.g. "80000-160000"), not a single number.
+- For salary answers, always include the currency symbol (e.g. "$80000" or "$80000-160000"). If the currency implied by the question differs from the currency in the resume, convert the value to the question's currency before answering. Do not add any extra text.
+- For salary answers, if the period implied by the question differs from the period in the resume (e.g. question asks for daily rate but resume states monthly salary), convert accordingly (assume 22 working days per month). Round the result daily salary (e.g. $8000 per month is ~$363.63 per day, but this sounds strage, so it's better to say $370 per day).
 - If question is about age, TAKE INTO ACCOUNT that today's date is {current_date}
 - If you do not have the information to answer the question or part of the question - answer 'No info
 - If it's looks like the question is related to the previous questions (e.g. "If yes/no, who/when/where?"), use the information from the previous questions.
@@ -488,7 +387,8 @@ that these words must be included).
 """
 
 # Resume builder prompts
-prompt_header = """
+prompt_header = (
+    """
 Act as an HR expert and resume writer specializing in ATS-friendly resumes. Your task is to create a professional and polished header for the resume. The header should:
 
 1. Contact Information: Include your full name, city, state/area/region (if applicable), and country, phone number, email address, LinkedIn profile, and GitHub profile. Exclude any information that is not provided.
@@ -500,10 +400,13 @@ To implement this:
 
 ##My information
   {personal_information}
-""" + prompt_header_template
+"""
+    + prompt_header_template
+)
 
 
-prompt_education = """
+prompt_education = (
+    """
 Act as an HR expert and resume writer with a specialization in creating ATS-friendly resumes. Your task is to articulate the educational background for a resume. For each educational entry, ensure you include:
 
 1. Institution Name and Location: Specify the university or educational institution’s name and location.
@@ -522,10 +425,13 @@ To implement this, follow these steps:
 
 ##Job Description
   {job_description}
-""" + prompt_education_template
+"""
+    + prompt_education_template
+)
 
 
-prompt_working_experience = """
+prompt_working_experience = (
+    """
 Act as an HR expert and resume writer with a specialization in creating ATS-friendly resumes. Your task is to detail the work experience for a resume, tailoring it to match the target job requirements. For each job entry, ensure you include:
 
 1. Company Name and Location: Provide the name of the company and its location.
@@ -545,10 +451,13 @@ To implement this:
 
 ##Job Description
   {job_description}
-""" + prompt_working_experience_template
+"""
+    + prompt_working_experience_template
+)
 
 
-prompt_side_projects = """
+prompt_side_projects = (
+    """
 Act as an HR expert and resume writer with a specialization in creating ATS-friendly resumes. Your task is to highlight notable side projects that are most relevant to the target job. For each project, ensure you include:
 
 1. Project Name and Link: Provide the name of the project and include a link to the GitHub repository or project page.
@@ -566,10 +475,13 @@ To implement this:
 
 ##Job Description
   {job_description}
-""" + prompt_side_projects_template
+"""
+    + prompt_side_projects_template
+)
 
 
-prompt_achievements = """
+prompt_achievements = (
+    """
 Act as an HR expert and resume writer with a specialization in creating ATS-friendly resumes. Your task is to list significant achievements that are most relevant to the target job. For each achievement, ensure you include:
 
 1. Award or Recognition: Clearly state the name of the award, recognition, scholarship, or honor.
@@ -586,10 +498,13 @@ To implement this:
 
 ##Job Description
   {job_description}
-""" + prompt_achievements_template
+"""
+    + prompt_achievements_template
+)
 
 
-prompt_certifications = """
+prompt_certifications = (
+    """
 Act as an HR expert and resume writer with a specialization in creating ATS-friendly resumes. Your task is to list significant certifications that are most relevant to the target job. For each certification, ensure you include:
 
 1. Certification Name: Clearly state the name of the certification.
@@ -606,10 +521,13 @@ To implement this:
 
 ##Job Description
   {job_description}
-""" + prompt_certifications_template
+"""
+    + prompt_certifications_template
+)
 
 
-prompt_additional_skills = """
+prompt_additional_skills = (
+    """
 Act as an HR expert and resume writer with a specialization in creating ATS-friendly resumes. Your task is to list additional skills that are most relevant to the target job. For each skill, ensure you include:
 
 1. Skill Category: Clearly state the category or type of skill.
@@ -629,7 +547,9 @@ To implement this:
 
 ##Job Description
   {job_description}
-""" + prompt_additional_skills_template
+"""
+    + prompt_additional_skills_template
+)
 
 # Prompt for resume improvement recommendations
 resume_improve = """
@@ -709,4 +629,119 @@ Each section should contain:
 ```
 ---
 ## Job Description Summary
+"""
+
+linkedin_message_classification_template = """
+You are triaging a LinkedIn inbox for the account owner.
+
+Classify the conversation into exactly one of these categories:
+- personal_message
+- job_offer_to_me
+- looking_for_job
+- marketing_spam
+
+## Classification intent
+- personal_message: genuine networking, relationship building, personal follow-up, or general conversation not primarily trying to sell a service or seek a job.
+- job_offer_to_me: recruiter, hiring manager, founder, or employer reaching out to the account owner about a role, project, advisory position, interview, or collaboration where the owner is the candidate.
+- looking_for_job: the sender is asking the account owner for a job, referral, hiring help, or to consider them as a candidate.
+- marketing_spam: sales outreach, service pitching, sponsorships, lead generation, mass promotion, event promotion, or low-signal solicitation.
+
+## Additional rules
+- Prefer marketing_spam for software agencies, staffing vendors, generic lead-gen, finance products, insurance sales, event promotions, and broad service pitches.
+- Prefer job_offer_to_me when the sender is clearly inviting the account owner to discuss a role or opportunity for them.
+- Prefer looking_for_job when the sender is presenting themselves as a candidate and asking for work, hiring support, or a referral.
+- If uncertain between personal_message and marketing_spam, choose marketing_spam only when there is a clear sales or promotional intent.
+- The proposed_action must be conservative because this is dry-run only.
+- Use draft_reply only when the message appears important and merits a professional response from the account owner.
+- Use flag_spam_and_archive only for clear spam or promotional outreach.
+- Keep the reasoning brief and specific.
+
+## Output format instructions
+{format_instructions}
+
+## Resume
+```
+{resume}
+```
+
+## Conversation
+```
+{conversation}
+```
+"""
+
+
+linkedin_message_reply_template = """
+You are writing a LinkedIn reply for the account owner.
+
+## Additional rules
+- Write a concise, professional, human message.
+- Sound like a real person, not an assistant or a polished sales email.
+- Keep the language plain and direct.
+- Avoid buzzwords, corporate jargon, hype, and overly polished phrasing.
+- Prefer short, natural sentences and contractions when they sound right.
+- Match the tone of {reply_tone}, but keep it conversational.
+- Do not overcommit.
+- If the opportunity looks interesting, express interest and suggest a short call or ask for more details.
+- If details are vague, ask one or two concrete follow-up questions.
+- {reply_paragraph_instruction}
+- {reply_punctuation_instruction}
+- Keep the reply under {reply_max_characters} characters.
+- Return only the reply text, with no intro, no bullets, and no quotation marks.
+
+{apology_context}
+
+## Resume
+```
+{resume}
+```
+
+## Classification
+```
+{classification}
+```
+
+## Conversation
+```
+{conversation}
+```
+"""
+
+
+generate_resume_text_template = """
+You are a professional resume writer. Convert the raw resume content below into a clean, structured resume text following the provided template format exactly.
+
+## Instructions
+- Extract all information from the raw resume content and map it to the corresponding sections in the template.
+- Preserve all factual details: names, dates, companies, technologies, responsibilities, education.
+- Replace template placeholders (e.g. [Full Name], [Job Title 1]) with actual values from the resume.
+- If a piece of information is not present in the raw resume, use "Not specified" for scalar fields or omit list items.
+- Keep the same section headers and indentation style as the template.
+- Output only the filled resume text, no commentary.
+
+## Template
+{template}
+
+## Raw Resume Content
+{raw_text}
+"""
+
+linkedin_message_reply_humanizer_template = """
+Rewrite the LinkedIn reply below so it sounds more human and less AI-generated.
+
+## Additional rules
+- Keep the original meaning.
+- Make it sound natural, warm, and direct.
+- {reply_paragraph_instruction}
+- {reply_punctuation_instruction}
+- Remove unnecessary jargon, filler, and overly polished wording.
+- Avoid sounding formal for the sake of sounding professional.
+- Keep it concise.
+- Do not add new claims, achievements, or details.
+- Return only the rewritten reply text.
+
+## Reply
+```
+{reply}
+```
 """

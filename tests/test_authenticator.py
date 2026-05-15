@@ -169,7 +169,9 @@ class TestLinkedInAuthenticatorLogin:
         auth.password = "password123"
 
         with (
-            patch.object(auth, "_is_authenticated_page", new_callable=AsyncMock, return_value=False),
+            patch.object(
+                auth, "_is_authenticated_page", new_callable=AsyncMock, return_value=False
+            ),
             patch(
                 "src.job_manager.linkedin.authenticator_linkedin.safe_fill", new_callable=AsyncMock
             ) as mock_fill,
@@ -206,7 +208,9 @@ class TestLinkedInAuthenticatorLogin:
         auth.password = "password123"
 
         with (
-            patch.object(auth, "_is_authenticated_page", new_callable=AsyncMock, return_value=False),
+            patch.object(
+                auth, "_is_authenticated_page", new_callable=AsyncMock, return_value=False
+            ),
             patch(
                 "src.job_manager.linkedin.authenticator_linkedin.safe_fill", new_callable=AsyncMock
             ) as mock_fill,
@@ -879,9 +883,7 @@ class TestIndeedEnterCredentials:
                 new_callable=AsyncMock,
                 return_value=True,
             ),
-            patch(
-                "src.job_manager.indeed.authenticator_indeed.async_pause", new_callable=AsyncMock
-            ),
+            patch("builtins.input", return_value=""),
             patch.object(auth, "check_login_success", new_callable=AsyncMock, return_value=True),
         ):
             result = await auth.enter_credentials()

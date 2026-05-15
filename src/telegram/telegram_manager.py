@@ -1,4 +1,6 @@
+import argparse
 import asyncio
+import re
 from typing import Any, Dict, Union
 
 import dotenv
@@ -7,6 +9,21 @@ from telethon import TelegramClient
 from config.logger_config import logger
 from telegram import Bot
 from telegram.error import TelegramError
+
+
+def normalize_telegram_topic_id(value: str | None) -> str | None:
+    """Return a Bot API message_thread_id from a numeric value or t.me/c topic URL."""
+    if not value:
+        return None
+    value = value.strip().strip('"').strip("'")
+    if not value:
+        return None
+    if value.isdigit():
+        return value
+    topic_url_match = re.search(r"t\.me/(?:c/\d+|[^/]+)/(\d+)", value)
+    if topic_url_match:
+        return topic_url_match.group(1)
+    return value
 
 
 async def send_captcha(bot_token, chat_id, topic_id, img_path, message):
@@ -51,10 +68,12 @@ class TelegramReportSender:
     """
 
     def __init__(self):
-        telegram_bot_token = dotenv.dotenv_values(".env")["tg_token"]
+        secrets = dotenv.dotenv_values(".env")
+        telegram_bot_token = secrets["tg_token"]
         self.bot = Bot(token=telegram_bot_token)
-        self.chat_id = dotenv.dotenv_values(".env")["tg_chat_id"]
-        self.report_topic_id = dotenv.dotenv_values(".env")["tg_report_topic_id"]
+        self.chat_id = secrets["tg_chat_id"]
+        self.report_topic_id = normalize_telegram_topic_id(secrets.get("tg_report_topic_id"))
+        self.err_topic_id = normalize_telegram_topic_id(secrets.get("tg_err_topic_id"))
         self.message = ""
 
     async def send_telegram_report(
@@ -138,6 +157,34 @@ class TelegramReportSender:
                 logger.error(f"Failed to send Telegram report:\n{e}")
             await asyncio.sleep(3)  # Use async sleep
 
+    async def send_test_message(self, text: str | None = None) -> None:
+        """Send a small diagnostic message to the configured report chat/topic."""
+        message = text or "Telegram report test from LinkedIn AI Job Applier."
+        await self.bot.send_message(
+            chat_id=self.chat_id,
+            message_thread_id=self.report_topic_id,
+            text=message,
+        )
+        destination = f"chat {self.chat_id}"
+        if self.report_topic_id:
+            destination += f", topic {self.report_topic_id}"
+        logger.info(f"Telegram test message sent to {destination}")
+
+    async def send_test_error_message(self, text: str | None = None) -> None:
+        """Send a small diagnostic message to the configured error chat/topic."""
+        message = text or "Telegram error-reporting test from LinkedIn AI Job Applier."
+        await self.bot.send_message(
+            chat_id=self.chat_id,
+            message_thread_id=self.err_topic_id,
+            text=f"Error:\n```{message}```",
+            parse_mode="Markdown",
+            disable_web_page_preview=True,
+        )
+        destination = f"chat {self.chat_id}"
+        if self.err_topic_id:
+            destination += f", topic {self.err_topic_id}"
+        logger.info(f"Telegram error test message sent to {destination}")
+
     def _format_jobs_no_info(self, jobs_no_info: list) -> str:
         """Format the information about the vacancies to which the application could not respond for whatever reason"""
         res = ""
@@ -149,16 +196,37 @@ class TelegramReportSender:
 
 
 if __name__ == "__main__":
-    from config.constants import TG_CAPTCHA_TOPIC_ID
 
-    secrets = dotenv.dotenv_values(".env")
-    tg_token = secrets["tg_token"]
-    tg_api_id = secrets["tg_api_id"]
-    tg_api_hash = secrets["tg_api_hash"]
-    tg_chat_id = secrets["tg_chat_id"]
+    def parse_args():
+        parser = argparse.ArgumentParser(description="Telegram diagnostics")
+        parser.add_argument(
+            "--test-report",
+            action="store_true",
+            help="Send a test message to tg_chat_id and optional tg_report_topic_id from .env",
+        )
+        parser.add_argument(
+            "--test-error",
+            action="store_true",
+            help="Send a test error message to tg_chat_id and optional tg_err_topic_id from .env",
+        )
+        parser.add_argument(
+            "--message",
+            default=None,
+            help="Custom text for --test-report",
+        )
+        return parser.parse_args()
 
-    message = "1747994625258759"
-    text = asyncio.run(
-        receive_messages(tg_api_id, tg_api_hash, tg_chat_id, TG_CAPTCHA_TOPIC_ID, message=message)
-    )
-    print(text)
+    async def main():
+        args = parse_args()
+        if args.test_report:
+            sender = TelegramReportSender()
+            await sender.send_test_message(args.message)
+            return
+        if args.test_error:
+            sender = TelegramReportSender()
+            await sender.send_test_error_message(args.message)
+            return
+
+        logger.info("No action requested. Use --test-report or --test-error")
+
+    asyncio.run(main())

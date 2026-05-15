@@ -498,6 +498,8 @@ class TestCompanyManagement:
                     "interest_reason": "Mismatch with role target",
                     "skills": ["Python", "Leadership"],
                     "submitted_resume_path": "/tmp/resume.pdf",
+                    "applied_at": "2026-05-06T17:08:00",
+                    "applied_at_text": "18 hours ago",
                 },
             )
 
@@ -506,6 +508,8 @@ class TestCompanyManagement:
             assert saved_job["interest_reason"] == "Mismatch with role target"
             assert saved_job["skills"] == ["Python", "Leadership"]
             assert saved_job["submitted_resume_path"] == "/tmp/resume.pdf"
+            assert saved_job["applied_at"] == "2026-05-06T17:08:00"
+            assert saved_job["applied_at_text"] == "18 hours ago"
 
     def test_save_company_skip_does_not_duplicate_existing_entry(self, job_applier):
         """Test duplicate skipped vacancies are not appended again"""
@@ -713,7 +717,7 @@ class TestInterestingJobs:
 
     def test_save_interesting_job(self, job_applier):
         """Test saving an interesting job"""
-        with patch.object(job_applier, "_save_data_to_yaml"):
+        with patch.object(job_applier, "_save_data_to_yaml") as mock_save:
             job_applier.interesting_jobs = []
             job_applier.job_key_skills = ["Python", "Docker"]
 
@@ -732,6 +736,12 @@ class TestInterestingJobs:
             assert saved_job.interest_score == 85
             assert saved_job.interest_reason == "Great fit"
             assert saved_job.skills == ["Python", "Docker"]
+            saved_payload = mock_save.call_args.args[0]
+            assert "skip_reason" not in saved_payload[0]
+            assert "applied_at" not in saved_payload[0]
+            assert "applied_at_text" not in saved_payload[0]
+            assert "submitted_resume_path" not in saved_payload[0]
+            assert "executed_at" not in saved_payload[0]
 
     def test_save_interesting_job_sorted(self, job_applier):
         """Test that interesting jobs are sorted by score"""
@@ -810,6 +820,32 @@ class TestDataPersistence:
             loaded_data = job_applier._load_data_from_yaml("answers.yaml")
 
             assert loaded_data == []
+
+    def test_load_data_from_yaml_empty_interesting_jobs_returns_list(self, job_applier):
+        """Test that an empty interesting_jobs.yaml is treated as no interesting jobs."""
+        mock_path = Path("/mock/output/interesting_jobs.yaml")
+
+        with (
+            patch.object(job_applier, "_define_output_file", return_value=mock_path),
+            patch("builtins.open", mock_open(read_data="")),
+            patch("yaml.safe_load", return_value=None),
+        ):
+            loaded_data = job_applier._load_data_from_yaml("interesting_jobs.yaml")
+
+            assert loaded_data == []
+
+    def test_load_data_from_yaml_empty_mapping_file_returns_dict(self, job_applier):
+        """Test that empty company/status YAML files are treated as no companies."""
+        mock_path = Path("/mock/output/skipped.yaml")
+
+        with (
+            patch.object(job_applier, "_define_output_file", return_value=mock_path),
+            patch("builtins.open", mock_open(read_data="")),
+            patch("yaml.safe_load", return_value=None),
+        ):
+            loaded_data = job_applier._load_data_from_yaml("skipped.yaml")
+
+            assert loaded_data == {}
 
 
 class TestDefineOutputFile:
@@ -942,6 +978,68 @@ class TestHandleApplyResult:
         assert job_applier.applies_num == 1
         assert job_applier.error_num == 1
         assert job_applier.success_applies_num == 0
+
+    @pytest.mark.asyncio
+    async def test_handle_apply_result_no_info_skip_saved_as_interesting(self, job_applier):
+        job_applier.applies_num = 0
+        job_applier.success_applies_num = 0
+        job_applier.total_applies_num = 0
+        job_applier.error_num = 0
+        job_applier.cache = JobManagerCache()
+
+        job = Job(
+            job_title="Software Engineer",
+            company_name="Tech Corp",
+            url="https://linkedin.com/jobs/view/1",
+        )
+        apply_result = (
+            "Skip",
+            "Could not apply to Software Engineer at Tech Corp. Reason: No info found for question: salary",
+        )
+
+        with (
+            patch("src.job_manager.job_manager.emit_event"),
+            patch("src.job_manager.job_manager.COLLECT_INFO_MODE", False),
+            patch.object(job_applier, "_save_company") as mock_save_company,
+            patch.object(job_applier, "_save_interesting_job") as mock_save_interesting,
+        ):
+            await job_applier._handle_apply_result(
+                apply_result,
+                job,
+                evaluation={"interest_score": 82, "interest_reason": "Strong fit"},
+            )
+
+        mock_save_company.assert_not_called()
+        mock_save_interesting.assert_called_once_with(job, score=82, reasoning=apply_result[1])
+
+    @pytest.mark.asyncio
+    async def test_handle_apply_result_easy_apply_dialog_skip_saved_as_interesting(self, job_applier):
+        job_applier.applies_num = 0
+        job_applier.success_applies_num = 0
+        job_applier.total_applies_num = 0
+        job_applier.error_num = 0
+        job_applier.cache = JobManagerCache()
+
+        job = Job(
+            job_title="Software Engineer",
+            company_name="Tech Corp",
+            url="https://linkedin.com/jobs/view/1",
+        )
+        apply_result = (
+            "Skip",
+            "Could not apply to Software Engineer at Tech Corp. Reason: Easy Apply dialog did not open",
+        )
+
+        with (
+            patch("src.job_manager.job_manager.emit_event"),
+            patch("src.job_manager.job_manager.COLLECT_INFO_MODE", False),
+            patch.object(job_applier, "_save_company") as mock_save_company,
+            patch.object(job_applier, "_save_interesting_job") as mock_save_interesting,
+        ):
+            await job_applier._handle_apply_result(apply_result, job)
+
+        mock_save_company.assert_not_called()
+        mock_save_interesting.assert_called_once_with(job, score=0, reasoning=apply_result[1])
 
     @pytest.mark.asyncio
     async def test_handle_apply_result_limit_does_not_save_company(self, job_applier):

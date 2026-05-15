@@ -21,6 +21,11 @@ LAST_RUN_FILE = Path(OUTPUT_DIR) / "last_run.yaml"
 
 
 class BaseJobManager(ABC):
+    @staticmethod
+    def _is_target_closed_error(error: Exception) -> bool:
+        """Return True when Playwright reports a closed page, context, or browser."""
+        return "Target page, context or browser has been closed" in str(error)
+
     @abstractmethod
     def start_applying(self) -> None:
         pass
@@ -156,6 +161,8 @@ class BaseJobManager(ABC):
                 ),
                 executed_at=datetime.now().isoformat(timespec="seconds"),
                 submitted_resume_path=evaluation.get("submitted_resume_path"),
+                applied_at=evaluation.get("applied_at"),
+                applied_at_text=evaluation.get("applied_at_text"),
             )
         except Exception as e:
             logger.warning(f"Error in saving job info: {e}")
@@ -251,7 +258,11 @@ class BaseJobManager(ABC):
             self.interesting_jobs, key=lambda x: int(x.interest_score), reverse=True
         )
         self._save_data_to_yaml(
-            [job.model_dump() for job in self.interesting_jobs], "interesting_jobs.yaml"
+            [
+                job.model_dump(exclude_none=True, exclude_defaults=True)
+                for job in self.interesting_jobs
+            ],
+            "interesting_jobs.yaml",
         )
         try:
             self.db_manager.insert_job_application(
@@ -269,6 +280,16 @@ class BaseJobManager(ABC):
         except Exception as e:
             logger.warning(f"Failed to write interesting job to DB: {e}")
         logger.info("Interesting job successfully saved to a file")
+
+    def _should_save_skip_as_interesting(self, apply_result: Tuple[str, str]) -> bool:
+        """Keep recoverable Easy Apply failures for later manual review instead of skipping."""
+        result, reason = apply_result
+        if result != "Skip":
+            return False
+        normalized_reason = reason.lower()
+        return (
+            "no info" in normalized_reason or "easy apply dialog did not open" in normalized_reason
+        )
 
     def _save_data_to_yaml(
         self,
@@ -294,6 +315,12 @@ class BaseJobManager(ABC):
         try:
             with open(output_file, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f)
+                if data is None:
+                    if filename == "answers.yaml" or filename == "interesting_jobs.yaml":
+                        logger.warning(f"The file {filename} is empty, returning an empty list")
+                        return []
+                    logger.warning(f"The file {filename} is empty, returning an empty dict")
+                    return {}
                 if (
                     filename == "answers.yaml" or filename == "interesting_jobs.yaml"
                 ) and not isinstance(data, list):
@@ -477,7 +504,11 @@ class BaseJobManager(ABC):
         )
         self.applies_num += 1
         if result != "Limit" and COLLECT_INFO_MODE is False:
-            self._save_company(job, apply_result, {"url": job.url}, evaluation=evaluation)
+            if self._should_save_skip_as_interesting(apply_result):
+                score = (evaluation or {}).get("interest_score") or 0
+                self._save_interesting_job(job, score=score, reasoning=apply_result[1])
+            else:
+                self._save_company(job, apply_result, {"url": job.url}, evaluation=evaluation)
         if result == "Success":
             self.success_applies_num += 1
             self.total_applies_num += 1

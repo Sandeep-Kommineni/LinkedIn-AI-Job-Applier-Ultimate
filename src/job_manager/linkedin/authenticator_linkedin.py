@@ -85,7 +85,9 @@ class LinkedInAuthenticator(BaseAuthenticator):
             # If saved account chooser is not shown, fall back to the classic login form.
             email_selectors = [
                 "#username",
-                "input[autocomplete='webauthn']",
+                "input[autocomplete='username webauthn']",
+                "input[autocomplete='username']",
+                "input[type='email']",
             ]
             filled_email = False
             for sel in email_selectors:

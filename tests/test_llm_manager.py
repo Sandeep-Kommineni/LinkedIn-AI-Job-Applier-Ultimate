@@ -604,9 +604,9 @@ class TestGPTAnswerer:
         assert result == "Python"
 
     def test_gpt_answerer_find_best_match_fuzzy(self):
-        """Test GPTAnswerer find_best_match with fuzzy match"""
+        """Test GPTAnswerer find_best_match with partial match"""
         options = ["Python", "Java", "JavaScript"]
-        text = "Pythn"  # Typo
+        text = "Pyth"  # Prefix substring of Python
 
         result = GPTAnswerer.find_best_match(text, options)
         assert result == "Python"
@@ -797,6 +797,61 @@ class TestGPTAnswerer:
         result = answerer.answer_question_numeric("How many years of experience?", [])
 
         assert result == "no info"
+
+    @patch("src.llm.llm_manager.AIAdapter")
+    @patch("src.llm.llm_manager.LoggerChatModel")
+    def test_extract_number_salary_range(
+        self,
+        mock_logger_chat,
+        mock_ai_adapter,
+        mock_api_key,
+        mock_llm_proxy,
+    ):
+        answerer = GPTAnswerer(mock_api_key, mock_llm_proxy)
+        assert (
+            answerer._extract_number_from_string("My expected salary is $60000-$80000")
+            == "60000-80000"
+        )
+        assert answerer._extract_number_from_string("£280-£560") == "280-560"
+
+    @patch("src.llm.llm_manager.AIAdapter")
+    @patch("src.llm.llm_manager.LoggerChatModel")
+    def test_extract_number_salary_range_with_commas(
+        self,
+        mock_logger_chat,
+        mock_ai_adapter,
+        mock_api_key,
+        mock_llm_proxy,
+    ):
+        answerer = GPTAnswerer(mock_api_key, mock_llm_proxy)
+        assert (
+            answerer._extract_number_from_string("My expected salary is $60,000-$80,000")
+            == "60000-80000"
+        )
+
+    @patch("src.llm.llm_manager.AIAdapter")
+    @patch("src.llm.llm_manager.LoggerChatModel")
+    def test_extract_number_single_salary(
+        self,
+        mock_logger_chat,
+        mock_ai_adapter,
+        mock_api_key,
+        mock_llm_proxy,
+    ):
+        answerer = GPTAnswerer(mock_api_key, mock_llm_proxy)
+        assert answerer._extract_number_from_string("My expected salary is $60000") == "60000"
+
+    @patch("src.llm.llm_manager.AIAdapter")
+    @patch("src.llm.llm_manager.LoggerChatModel")
+    def test_extract_number_plain_number(
+        self,
+        mock_logger_chat,
+        mock_ai_adapter,
+        mock_api_key,
+        mock_llm_proxy,
+    ):
+        answerer = GPTAnswerer(mock_api_key, mock_llm_proxy)
+        assert answerer._extract_number_from_string("5 years") == "5"
 
     @patch("src.llm.llm_manager.ChatPromptTemplate")
     @patch("src.llm.llm_manager.AIAdapter")

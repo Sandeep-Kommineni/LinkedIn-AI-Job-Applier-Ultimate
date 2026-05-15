@@ -1,63 +1,172 @@
-Alex Nettleton
-Austin, Texas
-Email: alexneth93@gmail.com | LinkedIn: https://www.linkedin.com/in/alex-nettleton-156703382
-GitHub: anetherland | Phone: +1 512-123-4567
+[Full Name]
+Gender: [Male/Female/Prefer not to say/Other]
+Phone: [Phone number]
+Email: [Email address]
+LinkedIn: [LinkedIn profile URL]
+GitHub: [GitHub profile URL or Not applicable]
+Date of Birth: [Date of birth or Not specified]
+Nationality: [Nationality or Not specified]
+Current Location: [City, Country]
+Languages: [Language 1], [Language 2], [Language 3]
+Visa Status: [Visa status or Not specified]
+Current Salary: [Current salary or Not specified]
+Expected Salary: [Expected salary or Not specified]
+Middle name: [Middle name or Not applicable]
+Notice Period: [Notice period]
+Salary Range USD: [Expected salary range in USD or Not specified]
+veteran: [Yes/No/Prefer not to say/Not applicable]
+disability: [Yes/No/Prefer not to say/Not applicable]
+remote_work: [Yes/No]
+in_person_work: [Yes/No]
+open_to_relocation: [Yes/No]
+willing_to_complete_assessments: [Yes/No/Maybe]
+willing_to_undergo_drug_tests: [Yes/No/Maybe]
+willing_to_undergo_background_checks: [Yes/No/Maybe]
+marital status: [Marital status or Prefer not to say]
+Religion: [Religion or Prefer not to say]
 
-Summary
-A motivated and detail-oriented Python Developer with a solid foundation in software engineering and a passion for building efficient, scalable, and robust applications. Experienced in the full software development lifecycle, from concept to deployment. Seeking to leverage strong problem-solving skills and a collaborative mindset to contribute to an innovative team.
+Professional Title
+    [Your professional title, for example: Software Engineer, Product Manager, Finance Manager, CTO, Data Analyst]
 
-Education
-Bachelor of Science in Computer Science
-The University of Texas at Austin - Austin, Texas
-Graduation Year: 2021
+Professional Summary
+    [Write 1 to 2 paragraphs summarizing your years of experience, industries, main strengths, leadership scope, technical or functional expertise, and career positioning.]
 
-Experience
-Software Engineer
-General Motors - Austin, TX
-(06/2023 - Present)
-    Developed and maintained Python-based applications for data processing and analysis within the manufacturing and robotics divisions.
-    Collaborated with cross-functional teams to design and implement new software features, resulting in a 15% improvement in data processing efficiency.
-    Participated in code reviews and contributed to the continuous improvement of software development practices.
-Junior Python Developer
-Q2 - Austin, TX
-(08/2021 - 05/2023)
-    Assisted in the development and testing of Python-based financial technology solutions.
-    Wrote and maintained unit tests to ensure code quality and reliability.
-    Gained experience with Agile development methodologies and version control systems like Git.
-Software Engineering Intern
-Arm - Austin, TX
-(06/2020 - 08/2020)
-    Contributed to a team focused on developing and scripting with Python and C.
-    Gained hands-on experience with Linux environments and source control systems.
-    Assisted in the development of internal tools to support engineering workflows.
+    [Optional second paragraph describing your recent focus, specialization, tools, platforms, domain knowledge, or target direction.]
 
-Projects
-Automated Data Pipeline
-    Designed and built a personal project to automate the collection and processing of data from various APIs using Python, Pandas, and SQL.
-    The pipeline transforms raw data into a structured format for analysis, reducing manual data handling time by 90%.
-    Link: https://github.com/anettleton/automated-data-pipeline
-E-commerce Price Tracker
-    Developed a web scraping tool using Python, BeautifulSoup, and Scrapy to monitor and track the prices of products on various e-commerce websites.
-    The tool sends email notifications when prices drop below a certain threshold.
-    Link: https://github.com/anettleton/ecommerce-price-tracker
+Core Strengths
+    - [Core strength 1]
+    - [Core strength 2]
+    - [Core strength 3]
+    - [Core strength 4]
+    - [Core strength 5]
+    - [Core strength 6]
+    - [Core strength 7]
 
+Selected Career History
 
-Achievements
-    GM Spot Award (2024): Received a spot recognition award for identifying and resolving a critical bug in a data processing pipeline, preventing potential data loss and saving an estimated 20 hours of manual correction per month.
-    Q2 "Circle of Awesomeness" Award (2022): Recognized for outstanding performance and teamwork as a junior developer, contributing to the successful on-time launch of a new mobile banking feature.
-    First Place, HackTX (2021): Led a team of four to win first place at the annual University of Texas at Austin hackathon by developing a novel FinTech application for micro-investing.
-    University Honors: Graduated with honors from the College of Natural Sciences at The University of Texas at Austin.
+    [Job Title 1]
+        [Company Name], [City, Country]
+        [Start Month Year] - [End Month Year or Present]
+        [Company/project website URL if relevant]
+        Industry: [Industry]
+        Overview:
+        [Short description of the company, product, department, or business context.]
 
-Certifications
-    PCEP – Certified Entry-Level Python Programmer - Python Institute
-    PCAP – Certified Associate in Python Programming - Python Institute
+        Key Achievements and Responsibilities:
+        - [Achievement or responsibility 1]
+        - [Achievement or responsibility 2]
+        - [Achievement or responsibility 3]
+        - [Achievement or responsibility 4]
+        - [Achievement or responsibility 5]
+        - [Achievement or responsibility 6]
+        - [Achievement or responsibility 7]
+
+        Technologies Used:
+        [Technology/tool/methodology 1], [Technology/tool/methodology 2], [Technology/tool/methodology 3]
+
+    [Job Title 2]
+        [Company Name], [City, Country]
+        [Start Month Year] - [End Month Year]
+        [Company/project website URL if relevant]
+        Industry: [Industry]
+        Overview:
+        [Short description of the company, product, department, or business context.]
+
+        Key Achievements and Responsibilities:
+        - [Achievement or responsibility 1]
+        - [Achievement or responsibility 2]
+        - [Achievement or responsibility 3]
+        - [Achievement or responsibility 4]
+        - [Achievement or responsibility 5]
+
+        Technologies Used:
+        [Technology/tool/methodology 1], [Technology/tool/methodology 2], [Technology/tool/methodology 3]
+
+    [Job Title 3]
+        [Company Name], [City, Country]
+        [Start Month Year] - [End Month Year]
+        Industry: [Industry]
+        Overview:
+        [Short description of the company, product, department, or business context.]
+
+        Key Achievements and Responsibilities:
+        - [Achievement or responsibility 1]
+        - [Achievement or responsibility 2]
+        - [Achievement or responsibility 3]
+        - [Achievement or responsibility 4]
+
+        Technologies Used:
+        [Technology/tool/methodology 1], [Technology/tool/methodology 2], [Technology/tool/methodology 3]
+
+Earlier Background
+    [Summarize earlier experience that is useful but does not need full detail. Mention industries, types of systems, leadership scope, or technical/domain foundation.]
 
 Skills
-    Python, SQL, JavaScript, HTML/CSS, Django, Flask, Pandas, NumPy, PostgreSQL, MongoDB, Git, Docker, Jira, AWS (Lambda, S3), Agile, Scrum, Software Infrastructure, Engineering
+    [Skill Category 1]
+    - [Skill 1]
+    - [Skill 2]
+    - [Skill 3]
+    - [Skill 4]
+    - [Skill 5]
 
-Languages
-    English - Native
-    Spanish - Professional
+    [Skill Category 2]
+    - [Skill 1]
+    - [Skill 2]
+    - [Skill 3]
+    - [Skill 4]
+    - [Skill 5]
 
-Interests
-    Machine Learning, Data Science, Cloud Computing, and Open-Source Contribution.
+    [Skill Category 3]
+    - [Skill 1]
+    - [Skill 2]
+    - [Skill 3]
+    - [Skill 4]
+    - [Skill 5]
+
+    [Skill Category 4]
+    - [Skill 1]
+    - [Skill 2]
+    - [Skill 3]
+    - [Skill 4]
+    - [Skill 5]
+
+Education
+    [Degree, Certificate, or Program Name]
+    [Institution Name]
+    [City, Country or Remote]
+    [Start Year] - [End Year]
+    [Credential link if available]
+    [GPA, honors, distinction, or additional details if relevant]
+
+    [Degree, Certificate, or Program Name]
+    [Institution Name]
+    [City, Country or Remote]
+    [Start Year] - [End Year]
+    [GPA, honors, distinction, or additional details if relevant]
+
+Certifications
+    - [Certification 1], [Issuer], [Year]
+    - [Certification 2], [Issuer], [Year]
+
+Projects
+    [Project Name 1]
+        Link: [Project URL]
+        Description:
+        [Describe the project, your role, the problem solved, the outcome, and the technologies or skills used.]
+
+    [Project Name 2]
+        Link: [Project URL]
+        Description:
+        [Describe the project, your role, the problem solved, the outcome, and the technologies or skills used.]
+
+Achievements
+    - [Achievement 1]
+    - [Achievement 2]
+    - [Achievement 3]
+
+Additional Notes
+- Nationality: [Nationality]
+- Current base: [Current city/country]
+- Fluent in [Languages]
+- Career focus: [Target roles, industries, or career direction]
+- Interested in roles spanning [Role 1], [Role 2], [Role 3], [Role 4]

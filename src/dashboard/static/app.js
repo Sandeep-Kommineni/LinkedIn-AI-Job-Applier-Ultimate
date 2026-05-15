@@ -6,9 +6,11 @@ const runStatus = document.getElementById("run-status");
 const currentJob = document.getElementById("current-job");
 const liveMetrics = document.getElementById("live-metrics");
 const jobsBody = document.getElementById("jobs-body");
+const jobsCount = document.getElementById("jobs-count");
 const jobDetails = document.getElementById("job-details");
 const screenshot = document.getElementById("screenshot");
 const screenshotMeta = document.getElementById("screenshot-meta");
+const refreshJobsButton = document.getElementById("refresh-jobs");
 const jobStatusFilter = document.getElementById("job-status-filter");
 const jobSearch = document.getElementById("job-search");
 const searchConfigForm = document.getElementById("search-config-form");
@@ -17,10 +19,32 @@ const runHistory = document.getElementById("run-history");
 const runDetailSummary = document.getElementById("run-detail-summary");
 const screenshotHistory = document.getElementById("screenshot-history");
 const exportRunButton = document.getElementById("export-run");
+const dashboardLoading = document.getElementById("dashboard-loading");
 
 let dashboardConfig = null;
 let currentJobs = [];
 let selectedRunId = null;
+const initialLoadingStartedAt = performance.now();
+const minimumInitialLoadingMs = 450;
+
+function setDashboardLoading(isLoading) {
+  if (!dashboardLoading) {
+    return;
+  }
+
+  document.body.classList.toggle("dashboard-loading", isLoading);
+  document.body.setAttribute("aria-busy", String(isLoading));
+  dashboardLoading.setAttribute("aria-hidden", String(!isLoading));
+}
+
+async function clearInitialLoading() {
+  const elapsedMs = performance.now() - initialLoadingStartedAt;
+  const remainingMs = Math.max(0, minimumInitialLoadingMs - elapsedMs);
+  if (remainingMs > 0) {
+    await new Promise((resolve) => setTimeout(resolve, remainingMs));
+  }
+  setDashboardLoading(false);
+}
 
 function formatDateTime(value) {
   if (!value) {
@@ -45,6 +69,11 @@ function formatDateTime(value) {
 function formatResumePath(path) {
   if (!path) return "-";
   return path.split(/[\\/]/).pop() || path;
+}
+
+function truncateText(value, maxLength = 120) {
+  if (!value) return "-";
+  return value.length > maxLength ? `${value.slice(0, maxLength).trim()}...` : value;
 }
 
 function currentRunPath(runId) {
@@ -134,20 +163,27 @@ function renderLive(snapshot, events) {
   renderTimeline(events);
 }
 
-function renderJobs(jobs) {
+function renderJobs(jobs, counts = {}) {
   currentJobs = jobs;
+  const filteredCount = counts.filtered_count ?? jobs.length;
+  const totalCount = counts.total_count ?? jobs.length;
+  jobsCount.textContent = filteredCount === totalCount
+    ? `(${totalCount})`
+    : `(${filteredCount} / ${totalCount})`;
   jobsBody.innerHTML = jobs
-    .map((job, index) => `
+    .map((job, index) => {
+      const reason = job.skip_reason || job.interest_reason || "";
+      return `
       <tr class="job-row" data-job-index="${index}">
         <td><span class="badge" data-status="${job.status}">${job.status}</span></td>
         <td>${formatDateTime(job.executed_at || job.updated_at)}</td>
         <td><a href="${job.url || "#"}" target="_blank" rel="noreferrer">${job.job_title || "Unknown job"}</a></td>
         <td>${job.company_name || "-"}</td>
         <td>${job.interest_score ?? "-"}</td>
-        <td title="${(job.submitted_resume_path || "").replaceAll('"', '&quot;')}">${formatResumePath(job.submitted_resume_path)}</td>
-        <td title="${(job.interest_reason || job.skip_reason || "").replaceAll('"', '&quot;')}">${job.skip_reason || job.interest_reason || "-"}</td>
+        <td class="reason-preview" title="${reason.replaceAll('"', '&quot;')}">${truncateText(reason)}</td>
       </tr>
-    `)
+    `;
+    })
     .join("");
 
   for (const row of jobsBody.querySelectorAll(".job-row")) {
@@ -179,6 +215,7 @@ function renderJobDetails(job) {
     <dl class="detail-grid">
       <div><dt>URL</dt><dd>${job.url ? `<a href="${job.url}" target="_blank" rel="noreferrer">Open posting</a>` : "-"}</dd></div>
       <div><dt>Executed At</dt><dd>${formatDateTime(job.executed_at || job.updated_at)}</dd></div>
+      <div><dt>Applied At</dt><dd>${job.applied_at ? formatDateTime(job.applied_at) : job.applied_at_text || "-"}</dd></div>
       <div><dt>Interest Score</dt><dd>${job.interest_score ?? "-"}</dd></div>
       <div><dt>Skip Reason</dt><dd>${job.skip_reason || "-"}</dd></div>
       <div><dt>Interest Reason</dt><dd>${job.interest_reason || "-"}</dd></div>
@@ -186,6 +223,7 @@ function renderJobDetails(job) {
       <div><dt>Skills</dt><dd>${Array.isArray(job.skills) ? job.skills.join(", ") : job.skills || "-"}</dd></div>
     </dl>
   `;
+  jobDetails.scrollTop = 0;
 }
 
 function renderRunHistory(runs) {
@@ -302,7 +340,7 @@ async function selectRun(runId) {
   const payload = await fetchJson(`/api/runs/${runId}`);
   renderRunDetailSummary(payload.run);
   renderTimeline(payload.events);
-  renderJobs(payload.jobs);
+  renderJobs(payload.jobs, payload);
   renderScreenshotHistory(payload.screenshots || []);
   await refreshRuns();
 }
@@ -428,12 +466,23 @@ async function refreshLive() {
 }
 
 async function refreshJobs() {
+  if (refreshJobsButton) {
+    refreshJobsButton.disabled = true;
+    refreshJobsButton.textContent = "Refreshing...";
+  }
   const query = new URLSearchParams();
   if (jobStatusFilter.value) query.set("status", jobStatusFilter.value);
   if (jobSearch.value) query.set("search", jobSearch.value);
   const endpoint = selectedRunId ? `/api/runs/${selectedRunId}/jobs` : "/api/jobs";
-  const payload = await fetchJson(`${endpoint}?${query.toString()}`);
-  renderJobs(payload.jobs);
+  try {
+    const payload = await fetchJson(`${endpoint}?${query.toString()}`);
+    renderJobs(payload.jobs, payload);
+  } finally {
+    if (refreshJobsButton) {
+      refreshJobsButton.disabled = false;
+      refreshJobsButton.textContent = "Refresh Jobs";
+    }
+  }
 }
 
 async function refreshConfig() {
@@ -470,6 +519,7 @@ async function wireControls() {
   document.getElementById("resume-run").onclick = async () => fetchJson("/api/control/resume", { method: "POST" });
   document.getElementById("stop-run").onclick = async () => fetchJson("/api/control/stop", { method: "POST" });
   document.getElementById("refresh-screenshot").onclick = refreshScreenshot;
+  refreshJobsButton.onclick = refreshJobs;
   exportRunButton.onclick = () => {
     if (!selectedRunId) {
       return;
@@ -546,16 +596,20 @@ async function refreshMeta() {
 
 async function init() {
   selectedRunId = getInitialSelectedRunId();
-  await wireControls();
-  wireFilters();
-  await Promise.all([refreshMeta(), refreshSummary(), refreshLive(), refreshJobs(), refreshConfig(), refreshRuns()]);
-  if (selectedRunId) {
-    await selectRun(selectedRunId);
-  } else {
-    renderRunDetailSummary(null);
-    renderScreenshotHistory([]);
+  try {
+    await wireControls();
+    wireFilters();
+    await Promise.all([refreshMeta(), refreshSummary(), refreshLive(), refreshJobs(), refreshConfig(), refreshRuns()]);
+    if (selectedRunId) {
+      await selectRun(selectedRunId);
+    } else {
+      renderRunDetailSummary(null);
+      renderScreenshotHistory([]);
+    }
+    startEventStream();
+  } finally {
+    await clearInitialLoading();
   }
-  startEventStream();
 }
 
 init().catch((error) => {

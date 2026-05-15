@@ -82,6 +82,45 @@ class TestGetVacanciesFromPage:
         assert result == []
 
     @pytest.mark.asyncio
+    async def test_skips_already_applied_job_card(self, manager):
+        mock_element = MagicMock()
+        applied_locator = MagicMock()
+        applied_locator.count = AsyncMock(return_value=1)
+        applied_item = MagicMock()
+        applied_item.inner_text = AsyncMock(return_value="Applied")
+        applied_locator.nth.return_value = applied_item
+        mock_element.locator.return_value = applied_locator
+
+        with (
+            patch.object(manager, "_scroll_to_load_jobs"),
+            patch(
+                "src.job_manager.linkedin.job_manager_linkedin.find_elements_safely",
+                new_callable=AsyncMock,
+                return_value=[mock_element],
+            ),
+            patch.object(manager, "_extract_job_url", new_callable=AsyncMock) as mock_extract_url,
+            patch("src.job_manager.linkedin.job_manager_linkedin.emit_event"),
+        ):
+            result = await manager.get_vacancies_from_page()
+
+        assert result == []
+        mock_extract_url.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_detects_applied_job_card_from_text(self, manager):
+        mock_element = MagicMock()
+        mock_element.locator.side_effect = RuntimeError("locator unavailable")
+
+        with patch(
+            "src.job_manager.linkedin.job_manager_linkedin.get_clean_text",
+            new_callable=AsyncMock,
+            return_value="Head of Digitalization\nMadison Pearl\nApplied",
+        ):
+            result = await manager._is_applied_job_card(mock_element)
+
+        assert result is True
+
+    @pytest.mark.asyncio
     async def test_returns_empty_list_on_exception(self, manager):
         with (
             patch.object(manager, "_scroll_to_load_jobs", side_effect=Exception("scroll error")),
@@ -154,6 +193,22 @@ class TestExtractJobUrl:
             "src.job_manager.linkedin.job_manager_linkedin.get_element_attribute_safely",
             new_callable=AsyncMock,
             return_value=recommended_href,
+        ):
+            result = await manager._extract_job_url(mock_element)
+
+        assert result == "https://www.linkedin.com/jobs/view/4401460753"
+
+    @pytest.mark.asyncio
+    async def test_returns_canonical_url_from_top_applicant_current_job_id(self, manager):
+        mock_element = AsyncMock()
+        top_applicant_href = (
+            "https://www.linkedin.com/jobs/collections/top-applicant?"
+            "currentJobId=4401460753&start=0&trackingId=abc"
+        )
+        with patch(
+            "src.job_manager.linkedin.job_manager_linkedin.get_element_attribute_safely",
+            new_callable=AsyncMock,
+            return_value=top_applicant_href,
         ):
             result = await manager._extract_job_url(mock_element)
 

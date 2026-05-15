@@ -38,6 +38,7 @@ RESUME_DIR = "data/resumes"
 PHOTO_DIR = "data/photo"
 COVER_LETTER_DIR = "data/cover_letters"
 BROWSER_STORAGE_STATE = "browser_session/browser_state.json"
+RESUME_TEXT_TEMPLATE_FILE = "examples/data/resumes/resume_text.txt"
 DB_FILE = "data/output/applier.db"
 APP_CONFIG_FILE = "config/app_config.yaml"
 
