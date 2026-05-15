@@ -1,14 +1,4 @@
-from pathlib import Path
-
-import yaml
-
 from src.dashboard import data_service
-
-
-def _write_yaml(path: Path, data) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as file:
-        yaml.safe_dump(data, file, sort_keys=False)
 
 
 def test_get_summary_aggregates_dashboard_outputs(monkeypatch, tmp_path):
@@ -393,32 +383,26 @@ def test_get_run_jobs_enriches_missing_fields_from_saved_outputs(monkeypatch, tm
     assert jobs[0]["llm_time_seconds"] == 28.037
 
 
-def test_get_run_jobs_matches_saved_linkedin_url_with_tracking_params(monkeypatch, tmp_path):
-    output_dir = tmp_path / "data" / "output"
-    _write_yaml(output_dir / "success.yaml", {})
-    _write_yaml(
-        output_dir / "skipped.yaml",
-        {
-            "Do Well Do Good": [
-                {
-                    "company_name": "Do Well Do Good",
-                    "job_title": "Director",
-                    "url": "https://www.linkedin.com/jobs/view/4403407599/?trackingId=abc",
-                    "interest_score": 15,
-                    "interest_reason": "Not enough consulting experience",
-                    "skip_reason": "Not enough consulting experience",
-                    "llm_time_seconds": 107.073,
-                }
-            ]
-        },
-    )
-    _write_yaml(output_dir / "failed.yaml", {})
-    _write_yaml(output_dir / "interesting_jobs.yaml", [])
+def test_get_run_jobs_matches_saved_linkedin_url_with_tracking_params(monkeypatch):
+    from unittest.mock import MagicMock
 
-    monkeypatch.setattr(data_service, "SUCCESS_FILE", output_dir / "success.yaml")
-    monkeypatch.setattr(data_service, "SKIPPED_FILE", output_dir / "skipped.yaml")
-    monkeypatch.setattr(data_service, "FAILED_FILE", output_dir / "failed.yaml")
-    monkeypatch.setattr(data_service, "INTERESTING_FILE", output_dir / "interesting_jobs.yaml")
+    saved_row = {
+        "result": "skip",
+        "company_name": "Do Well Do Good",
+        "job_title": "Director",
+        "url": "https://www.linkedin.com/jobs/view/4403407599/?trackingId=abc",
+        "interest_score": 15,
+        "interest_reason": "Not enough consulting experience",
+        "skip_reason": "Not enough consulting experience",
+        "skills": None,
+        "llm_time_seconds": 107.073,
+        "executed_at": None,
+        "submitted_resume_path": None,
+    }
+    mock_db = MagicMock()
+    mock_db.get_job_applications_by_urls.return_value = [saved_row]
+    monkeypatch.setattr(data_service, "_get_db", lambda: mock_db)
+
     monkeypatch.setattr(
         data_service,
         "read_events_for_run",
@@ -446,30 +430,27 @@ def test_get_run_jobs_matches_saved_linkedin_url_with_tracking_params(monkeypatc
     assert jobs[0]["llm_time_seconds"] == 107.073
 
 
-def test_get_run_jobs_enriches_interesting_jobs_from_saved_outputs(monkeypatch, tmp_path):
-    output_dir = tmp_path / "data" / "output"
-    _write_yaml(output_dir / "success.yaml", {})
-    _write_yaml(output_dir / "skipped.yaml", {})
-    _write_yaml(output_dir / "failed.yaml", {})
-    _write_yaml(
-        output_dir / "interesting_jobs.yaml",
-        [
-            {
-                "company_name": "Al Ghurair",
-                "job_title": "Vice President Information Technology",
-                "url": "https://www.linkedin.com/jobs/view/4359175355/",
-                "interest_score": 85,
-                "interest_reason": "Could not apply. Reason: Easy Apply dialog did not open",
-                "llm_time_seconds": 7.069,
-                "skills": ["api management", "governance"],
-            }
-        ],
-    )
+def test_get_run_jobs_enriches_interesting_jobs_from_saved_outputs(monkeypatch):
+    import json
+    from unittest.mock import MagicMock
 
-    monkeypatch.setattr(data_service, "SUCCESS_FILE", output_dir / "success.yaml")
-    monkeypatch.setattr(data_service, "SKIPPED_FILE", output_dir / "skipped.yaml")
-    monkeypatch.setattr(data_service, "FAILED_FILE", output_dir / "failed.yaml")
-    monkeypatch.setattr(data_service, "INTERESTING_FILE", output_dir / "interesting_jobs.yaml")
+    saved_row = {
+        "result": "interesting",
+        "company_name": "Al Ghurair",
+        "job_title": "Vice President Information Technology",
+        "url": "https://www.linkedin.com/jobs/view/4359175355/",
+        "interest_score": 85,
+        "interest_reason": "Could not apply. Reason: Easy Apply dialog did not open",
+        "skip_reason": None,
+        "skills": json.dumps(["api management", "governance"]),
+        "llm_time_seconds": 7.069,
+        "executed_at": None,
+        "submitted_resume_path": None,
+    }
+    mock_db = MagicMock()
+    mock_db.get_job_applications_by_urls.return_value = [saved_row]
+    monkeypatch.setattr(data_service, "_get_db", lambda: mock_db)
+
     monkeypatch.setattr(
         data_service,
         "read_events_for_run",

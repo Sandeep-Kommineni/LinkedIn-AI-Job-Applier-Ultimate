@@ -275,8 +275,6 @@ def _build_run_jobs(run_id: str) -> List[Dict[str, Any]]:
     saved_jobs_by_url: Dict[str, Dict[str, Any]] = {}
     for row in db_rows:
         result = (row["result"] or "").lower()
-        if result == "interesting":
-            continue
         url_key = _job_url_key(row.get("url"))
         if url_key and url_key not in saved_jobs_by_url:
             saved_jobs_by_url[url_key] = _db_row_to_job(row, _result_to_status(result))
