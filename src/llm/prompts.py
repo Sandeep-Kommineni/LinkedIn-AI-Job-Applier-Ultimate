@@ -391,11 +391,14 @@ prompt_header = (
     """
 Act as an HR expert and resume writer specializing in ATS-friendly resumes. Your task is to create a professional and polished header for the resume. The header should:
 
-1. Contact Information: Include your full name, city, state/area/region (if applicable), and country, phone number, email address, LinkedIn profile, and GitHub profile. Exclude any information that is not provided.
-2. Formatting: Ensure the contact details are presented clearly and are easy to read. Phone code and phone number should be separated by a space.
+1. Full name as the main title (h1).
+2. Line 1: City, Country | Open to Relocation / Remote | Phone | Email — all on one line separated by pipes.
+3. Line 2: LinkedIn display URL | GitHub Work display URL | GitHub Personal display URL | Portfolio display URL — all on one line separated by pipes. Use concise display URLs (e.g. "linkedin.com/in/username", "github.com/username") as the link text.
+4. Formatting: Phone code and phone number should be separated by a space.
+5. ALWAYS include ALL provided contact information fields - never omit any provided detail like phone, email, LinkedIn, GitHub, etc.
 
 To implement this:
-- If any of the contact information fields (e.g., state/area/region and/or country, LinkedIn profile, GitHub profile) are not provided (i.e., None, No info), omit them from the header.
+- If any of the contact information fields (e.g., state/area/region and/or country, LinkedIn profile, GitHub profile, website) are not provided (i.e., None, No info), omit them from the header.
 - NEVER include zip code
 
 ##My information
@@ -409,7 +412,7 @@ prompt_education = (
     """
 Act as an HR expert and resume writer with a specialization in creating ATS-friendly resumes. Your task is to articulate the educational background for a resume. For each educational entry, ensure you include:
 
-1. Institution Name and Location: Specify the university or educational institution’s name and location.
+1. Institution Name and Location: Specify the university or educational institution's name and location.
 2. Degree and Field of Study: Clearly indicate the degree earned and the field of study.
 3. Grade: Include your Grade if it is strong and relevant, otherwise skip it.
 4. Relevant Coursework: List key courses with their grades to showcase your academic strengths.
@@ -417,6 +420,7 @@ Act as an HR expert and resume writer with a specialization in creating ATS-frie
 
 To implement this, follow these steps:
 - Be concise and to the point, don't write a lot of text.
+- Include ALL education entries from the provided data — do not omit any.
 - If the exam details are not provided (i.e., None, No info), skip the coursework section when filling out the template.
 - If the exam details are available, fill out the coursework section accordingly.
 
@@ -435,14 +439,18 @@ prompt_working_experience = (
 Act as an HR expert and resume writer with a specialization in creating ATS-friendly resumes. Your task is to detail the work experience for a resume, tailoring it to match the target job requirements. For each job entry, ensure you include:
 
 1. Company Name and Location: Provide the name of the company and its location.
-2. Job Title: Clearly state your job title, mentioning the job title from the target position or a close variant if possible.
-3. Dates of Employment: Include the start and end dates of your employment.
-4. Responsibilities and Achievements: Describe your key responsibilities and notable achievements, emphasizing measurable results and specific contributions that directly align with what the job asks for.
-5. Job Alignment: Prioritize and emphasize experience that directly matches the job requirements, using similar terminology and highlighting relevant technologies, methodologies, or skills mentioned in the job description.
-6. Quantified Results: Quantify achievements that align with the company's goals and the specific role requirements.
+2. Company URL: If a company link is provided, add a site link after the company name displaying the domain (e.g. "truviz.ai") as a clickable link. Leave space between the company name and the site link.
+3. Job Title: Clearly state your job title exactly as provided in the data. Do NOT append the position field, role description, or add any parenthetical text to the job title.
+4. Dates of Employment: Include the start and end dates of your employment.
+5. Responsibilities and Achievements: Describe your key responsibilities and notable achievements, emphasizing measurable results and specific contributions that directly align with what the job asks for.
+6. Job Alignment: Prioritize and emphasize experience that directly matches the job requirements, using similar terminology and highlighting relevant technologies, methodologies, or skills mentioned in the job description.
+7. Quantified Results: Quantify achievements that align with the company's goals and the specific role requirements.
 
 To implement this:
 - Be concise and to the point, don't write a lot of text.
+- Keep bullet points concise and factual — max 2 lines each. State what you did and the measurable result. Do NOT add tailoring phrases like "demonstrating...", "aligning with...", "shows ability to...", "experience transferable to...", or "key for...".
+- Include at least 3 bullet points for each experience entry, and more if the role had significant responsibilities or achievements.
+- Use as many bullet points as needed to cover all important responsibilities and results — do not artificially limit to 3.
 - If any of the work experience details (e.g., responsibilities, achievements) are not provided (i.e., None, No info), omit those sections when filling out the template.
 
 
@@ -458,16 +466,21 @@ To implement this:
 
 prompt_side_projects = (
     """
-Act as an HR expert and resume writer with a specialization in creating ATS-friendly resumes. Your task is to highlight notable side projects that are most relevant to the target job. For each project, ensure you include:
+Act as an HR expert and resume writer with a specialization in creating ATS-friendly resumes. Your task is to highlight ALL side projects from the candidate's information. Do NOT omit any project - include every single one listed below. For each project, ensure you include:
 
-1. Project Name and Link: Provide the name of the project and include a link to the GitHub repository or project page.
-2. Project Details: Describe any notable recognition or achievements related to the project, such as GitHub stars or community feedback.
-3. Technical Contributions: Highlight your specific contributions and the technologies used in the project.
-4. Job Relevance: Prioritize and emphasize projects that align with the job requirements, using similar technologies or demonstrating relevant skills.
+1. Project Name: Provide the name of the project as plain text (not a link).
+2. Project Tagline: After the project name, add an em dash (—) followed by a short one-line tagline that describes what the project does (e.g. "TruGen AI — Realistic AI video agents that see, hear, respond, and act in real time"). This tagline should be concise (under 15 words) and describe the product/project purpose.
+3. Site Link: After the tagline, add a separate link displaying the site domain name (e.g. "trugen.ai") pointing to the project URL.
+4. Project Details: Describe any notable recognition or achievements related to the project, such as GitHub stars or community feedback.
+5. Technical Contributions: Highlight your specific contributions and the technologies used in the project.
+6. Job Relevance: Prioritize and emphasize projects that align with the job requirements, using similar technologies or demonstrating relevant skills.
 
 To implement this:
 - Be concise and to the point, don't write a lot of text.
 - Put the projects that are related to auto job applying first.
+- Include at least 3 bullet points for each project, and more if the project had multiple significant features or outcomes.
+- Use as many bullet points as needed to cover all important details — do not artificially limit to 3.
+- Include ALL projects from the information below - do not skip any.
 - If any of the project details (e.g., link, achievements) are not provided (i.e., None, No info), omit those sections when filling out the template.
 
 ##My information
@@ -490,6 +503,7 @@ Act as an HR expert and resume writer with a specialization in creating ATS-frie
 
 To implement this:
 - Be concise and to the point, don't write a lot of text.
+- Keep descriptions factual — 1 concise sentence max after the achievement name.
 - If any of the achievement details (e.g., certifications, descriptions) are not provided (i.e., None, No info), omit those sections when filling out the template.
 - DON'T DIRECTLY SAY that this achievement is related to the job description, just describe the achievement and its relevance to your career or academic journey.
 
@@ -505,7 +519,7 @@ To implement this:
 
 prompt_certifications = (
     """
-Act as an HR expert and resume writer with a specialization in creating ATS-friendly resumes. Your task is to list significant certifications that are most relevant to the target job. For each certification, ensure you include:
+Act as an HR expert and resume writer with a specialization in creating ATS-friendly resumes. Your task is to list ALL certifications from the candidate's information. Do NOT omit any certification - include every single one listed below. For each certification, ensure you include:
 
 1. Certification Name: Clearly state the name of the certification.
 2. Description: Provide a brief description of the certification and its relevance to your professional or academic career.
@@ -514,7 +528,11 @@ Act as an HR expert and resume writer with a specialization in creating ATS-frie
 To implement this:
 - Be concise and to the point, don't write a lot of text.
 - Ensure that the certifications are clearly presented and effectively highlight your qualifications that match the job requirements.
+- List each certification on its own line.
+- Include ALL certifications from the information below - do not skip any.
 - If any of the certification details (e.g., descriptions) are not provided (i.e., None, No info), omit those sections when filling out the template.
+- ONLY include validity dates (e.g. "Valid 2024–2027") if the dates are EXPLICITLY provided in the certification data. Do NOT fabricate, infer, or hallucinate any dates that are not present in the source data.
+- Place validity dates at the beginning of the description, followed by a semicolon and the description text (e.g. "Valid 2024–2027; Foundational cloud computing certification...").
 
 ##My information
   {certifications}
@@ -536,6 +554,7 @@ Act as an HR expert and resume writer with a specialization in creating ATS-frie
 
 To implement this:
 - Be concise and to the point, don't write a lot of text.
+- List skill names only — do NOT add parenthetical descriptions, elaborations, or technology details after skill names. For example, write "JavaScript / TypeScript" NOT "JavaScript / TypeScript (ES6+, Node.js)".
 - Ensure that the skills listed are relevant and accurately reflect your expertise in the field.
 - If any of the skill details (e.g., languages, interests, skills) are not provided (i.e., None, No info), omit those sections when filling out the template.
 

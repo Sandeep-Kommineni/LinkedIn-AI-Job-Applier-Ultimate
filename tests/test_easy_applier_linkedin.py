@@ -387,8 +387,8 @@ class TestCheckAndFixErrors:
         applier._fill_textbox_question_errors = AsyncMock()
         applier._find_next_or_submit_button = AsyncMock(return_value=(mock_button, "next"))
         with patch("src.job_manager.linkedin.easy_applier_linkedin.async_pause"):
-            result = await applier._check_and_fix_errors(mock_button)
-        assert result is False
+            with pytest.raises(Exception, match="Failed to answer questions"):
+                await applier._check_and_fix_errors(mock_button)
 
     @pytest.mark.asyncio
     async def test_fixes_errors_then_succeeds(self, applier):
@@ -954,7 +954,13 @@ class TestDropdownCaching:
     @pytest.mark.asyncio
     async def test_reuses_cached_answer_from_different_field_type(self, applier):
         dropdown = AsyncMock()
-        dropdown.get_attribute = AsyncMock(return_value="email-dropdown")
+
+        def mock_get_attribute(attr):
+            if attr == "id":
+                return "email-dropdown"
+            return None
+
+        dropdown.get_attribute = AsyncMock(side_effect=mock_get_attribute)
         option_locator = MagicMock()
         option_locator.evaluate_all = AsyncMock(
             return_value=["Select an option", "ziad.nahas@gmail.com"]
@@ -1007,7 +1013,13 @@ class TestDropdownCaching:
     @pytest.mark.asyncio
     async def test_accepts_already_selected_dropdown_answer(self, applier):
         dropdown = AsyncMock()
-        dropdown.get_attribute = AsyncMock(return_value="email-dropdown")
+
+        def mock_get_attribute(attr):
+            if attr == "id":
+                return "email-dropdown"
+            return None
+
+        dropdown.get_attribute = AsyncMock(side_effect=mock_get_attribute)
         option_locator = MagicMock()
         option_locator.evaluate_all = AsyncMock(
             return_value=["Select an option", "ziad.nahas@gmail.com"]

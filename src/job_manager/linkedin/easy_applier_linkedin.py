@@ -382,11 +382,10 @@ class LinkedInEasyApplier(BaseEasyApplier):
             attempt += 1
         else:
             error_summary = str(error_texts) if error_texts else "unknown validation errors"
-            logger.warning(
-                f"Form submission still has errors after 3 attempts: {error_summary}. "
-                "Skipping this application gracefully."
+            logger.error(f"Form submission failed with errors: {error_summary}")
+            raise Exception(
+                f"Failed to answer questions or file upload with errors: {error_summary}"
             )
-            return False
 
     async def _discard_application(self) -> None:
         """Discard application (async)"""
@@ -1478,93 +1477,131 @@ class LinkedInEasyApplier(BaseEasyApplier):
             dropdowns = list(dropdowns.values())
 
             if dropdowns:
-                logger.info("Dropdowns found")
-                dropdown = dropdowns[0]
-                # Try to gather options text if possible
-                options = []
-                try:
-                    # For native select elements, get options via DOM
-                    options = [
-                        t
-                        for t in await dropdown.locator("option").evaluate_all(
-                            "els => els.map(e => e.textContent?.trim() ?? '')"
-                        )
-                        if t
-                    ]
-                except Exception:
+                logger.info(f"Found {len(dropdowns)} dropdown(s) in section")
+                for dropdown_index, dropdown in enumerate(dropdowns):
+                    # Gather options for this specific dropdown
                     options = []
+                    try:
+                        options = [
+                            t
+                            for t in await dropdown.locator("option").evaluate_all(
+                                "els => els.map(e => e.textContent?.trim() ?? '')"
+                            )
+                            if t
+                        ]
+                    except Exception:
+                        options = []
 
-                # Try to find the label for this dropdown
-                try:
-                    label_selectors = [
-                        "label",
-                        ".fb-dash-form-element__label",
-                        "[data-test-text-entity-list-form-title]",
-                    ]
-
+                    # Find the label for THIS specific dropdown
                     question_text = ""
-                    for label_selector in label_selectors:
-                        label = await find_element_safely(section, label_selector, "css selector")
-                        if label:
-                            question_text = (await label.text_content() or "").lower().strip()
+                    try:
+                        # First try aria-label attribute on the select element
+                        aria_label = await dropdown.get_attribute("aria-label")
+                        if aria_label:
+                            question_text = aria_label.lower().strip()
+                        else:
+                            # Try finding the closest label via for=id association
+                            dropdown_id = await dropdown.get_attribute("id")
+                            if dropdown_id:
+                                label_for = await find_element_safely(
+                                    section, f"label[for='{dropdown_id}']", "css selector"
+                                )
+                                if label_for:
+                                    question_text = (
+                                        await label_for.text_content() or ""
+                                    ).lower().strip()
+
+                        # Fallback: look for nearby label elements
+                        if not question_text:
+                            label_selectors = [
+                                "label",
+                                ".fb-dash-form-element__label",
+                                "[data-test-text-entity-list-form-title]",
+                            ]
+                            for label_selector in label_selectors:
+                                labels = await find_elements_safely(
+                                    section, label_selector, "css selector"
+                                )
+                                if labels and dropdown_index < len(labels):
+                                    question_text = (
+                                        await labels[dropdown_index].text_content() or ""
+                                    ).lower().strip()
+                                    break
+                                elif labels:
+                                    question_text = (
+                                        await labels[0].text_content() or ""
+                                    ).lower().strip()
+                                    break
+
+                        if question_text:
                             question_text = self._deduplicate_question_text(question_text)
+                            # Build a per-dropdown question key for multi-dropdown sections
+                            if len(dropdowns) > 1:
+                                # Use aria-label or option context to disambiguate
+                                dropdown_role = await dropdown.get_attribute("aria-label") or ""
+                                if dropdown_role:
+                                    question_text = f"{question_text} - {dropdown_role.lower()}"
                             self.previous_question_texts.append(question_text)
-                            break
-                except Exception as e:
-                    logger.warning(f"Could not find label for dropdown: {e}")
-                    question_text = ""
+                    except Exception as e:
+                        logger.warning(f"Could not find label for dropdown #{dropdown_index}: {e}")
 
-                try:
-                    current_selection = (
-                        await dropdown.locator("option:checked").first.text_content() or ""
-                    ).strip()
-                except Exception:
-                    current_selection = ""
-                logger.debug(f"Current selection: {current_selection}")
-
-                if self._is_meaningful_existing_answer(current_selection):
-                    logger.info(
-                        f"Dropdown question '{question_text}' already has a selected answer: {current_selection}"
-                    )
-                    self._save_questions(
-                        Question(
-                            question_type="dropdown",
-                            question=question_text,
-                            answer=current_selection,
-                        )
-                    )
-                    return True
-
-                existing_answer = None
-                cached_question = self._find_cached_question(question_text, "dropdown")
-                if cached_question:
-                    existing_answer = (
-                        cached_question.answer.strip()
-                        if isinstance(cached_question.answer, str)
-                        else cached_question.answer
-                    )
-
-                if existing_answer:
+                    try:
+                        current_selection = (
+                            await dropdown.locator("option:checked").first.text_content() or ""
+                        ).strip()
+                    except Exception:
+                        current_selection = ""
                     logger.debug(
-                        f"Found existing answer for question '{question_text}': {existing_answer}"
+                        f"Dropdown #{dropdown_index} current selection: {current_selection}"
                     )
-                    if current_selection != existing_answer:
-                        logger.debug(f"Updating selection to: {existing_answer}")
-                        await self._select_dropdown_option(dropdown, existing_answer)
-                else:
-                    logger.info(f"Asking question: {question_text}")
-                    logger.info(f"Available options: {options}")
-                    answer = self.gpt_answerer.select_one_answer_from_options(
-                        question_text, options, self.previous_question_texts[:-1]
-                    )
-                    if self._is_no_info_answer(answer):
-                        raise NoInfoException(f"No info found for question: {question_text}")
-                    question_data = Question(
-                        question_type="dropdown", question=question_text, answer=answer
-                    )
-                    self._save_questions(question_data)
-                    await self._select_dropdown_option(dropdown, answer)
-                    logger.debug(f"Selected new dropdown answer: {answer}")
+
+                    if self._is_meaningful_existing_answer(current_selection):
+                        logger.info(
+                            f"Dropdown '{question_text}' already answered: {current_selection}"
+                        )
+                        self._save_questions(
+                            Question(
+                                question_type="dropdown",
+                                question=question_text,
+                                answer=current_selection,
+                            )
+                        )
+                        continue
+
+                    existing_answer = None
+                    cached_question = self._find_cached_question(question_text, "dropdown")
+                    if cached_question:
+                        existing_answer = (
+                            cached_question.answer.strip()
+                            if isinstance(cached_question.answer, str)
+                            else cached_question.answer
+                        )
+
+                    if existing_answer:
+                        logger.debug(
+                            f"Cached answer for '{question_text}': {existing_answer}"
+                        )
+                        if current_selection != existing_answer:
+                            await self._select_dropdown_option(dropdown, existing_answer)
+                    else:
+                        logger.info(f"Asking dropdown question: {question_text}")
+                        logger.info(f"Available options: {options}")
+                        answer = self.gpt_answerer.select_one_answer_from_options(
+                            question_text, options, self.previous_question_texts[:-1]
+                        )
+                        if self._is_no_info_answer(answer):
+                            raise NoInfoException(
+                                f"No info found for question: {question_text}"
+                            )
+                        self._save_questions(
+                            Question(
+                                question_type="dropdown",
+                                question=question_text,
+                                answer=answer,
+                            )
+                        )
+                        await self._select_dropdown_option(dropdown, answer)
+                        logger.debug(f"Selected dropdown answer: {answer}")
 
                 return True
 

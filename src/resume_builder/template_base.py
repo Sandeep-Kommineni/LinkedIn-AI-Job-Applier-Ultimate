@@ -6,24 +6,24 @@ prompt_header_template = """
 <header>
   <h1>[Name and Surname]</h1>
   <div class="contact-info">
-     <p class="fas fa-phone">
-      <span>[Your Prefix Phone number]</span>
-    </p>
-    <p class="fas fa-map-marker-alt">
-      <span>[Your City and State/Area/Region (if applicable) and Country (if applicable)]</span>
-    </p>
-    <div class="contact-links">
-      <p class="fas fa-envelope">
-        <a href="mailto:[Your Email]">[Your Email]</a>
-      </p>
-      <p class="fab fa-linkedin">
-        <a href="[Link LinkedIn account]">LinkedIn</a>
-      </p>
-      <p class="fab fa-github">
-        <a href="[Link GitHub account]">GitHub</a>
-      </p>
-    </div>
+     <span>[City, Country]</span>
+     <span class="sep">|</span>
+     <span>[Open to Relocation / Remote]</span>
+     <span class="sep">|</span>
+     <span>[Your Prefix Phone number]</span>
+     <span class="sep">|</span>
+     <a href="mailto:[Your Email]">[Your Email]</a>
   </div>
+  <div class="contact-links">
+     <a href="[Link LinkedIn account]">[LinkedIn display URL]</a>
+     <span class="sep">|</span>
+     <a href="[Link GitHub Work account]">[GitHub Work display URL]</a>
+     <span class="sep">|</span>
+     <a href="[Link GitHub Personal account]">[GitHub Personal display URL]</a>
+     <span class="sep">|</span>
+     <a href="[Link Portfolio or Website]">[Portfolio display URL]</a>
+  </div>
+  <hr class="header-rule">
 </header>
 ```
 The results should be provided in html format, Provide only the html code for the resume, without any explanations or additional text and also without ```html ```
@@ -58,7 +58,7 @@ prompt_working_experience_template = """
     <h2>Experience</h2>
     <div class="entry">
       <div class="entry-header">
-          <span class="entry-name">[Company Name]</span>
+          <span class="entry-name">[Company Name] <span class="site-link"><a href="[Company URL]">[Company Domain]</a></span></span>
           <span class="entry-location">[Location]</span>
       </div>
       <div class="entry-details">
@@ -73,7 +73,7 @@ prompt_working_experience_template = """
     </div>
     <div class="entry">
       <div class="entry-header">
-          <span class="entry-name">[Company Name]</span>
+          <span class="entry-name">[Company Name] <span class="site-link"><a href="[Company URL]">[Company Domain]</a></span></span>
           <span class="entry-location">[Location]</span>
       </div>
       <div class="entry-details">
@@ -88,7 +88,7 @@ prompt_working_experience_template = """
     </div>
     <div class="entry">
       <div class="entry-header">
-          <span class="entry-name">[Company Name]</span>
+          <span class="entry-name">[Company Name] <span class="site-link"><a href="[Company URL]">[Company Domain]</a></span></span>
           <span class="entry-location">[Location]</span>
       </div>
       <div class="entry-details">
@@ -113,27 +113,30 @@ prompt_side_projects_template = """
     <h2>Projects</h2>
     <div class="entry">
       <div class="entry-header">
-          <span class="entry-name"><i class="fab fa-github"></i> <a href="[Github Repo or Link]">[Project Name]</a></span>
+          <span class="entry-name">[Project Name] — [Short one-line tagline describing the project] <span class="site-link"><a href="[Project URL]">[Site Domain]</a></span></span>
       </div>
       <ul class="compact-list">
+          <li>[Describe any notable recognition or reception]</li>
           <li>[Describe any notable recognition or reception]</li>
           <li>[Describe any notable recognition or reception]</li>
       </ul>
     </div>
     <div class="entry">
       <div class="entry-header">
-          <span class="entry-name"><i class="fab fa-github"></i> <a href="[Github Repo or Link]">[Project Name]</a></span>
+          <span class="entry-name">[Project Name] — [Short one-line tagline describing the project] <span class="site-link"><a href="[Project URL]">[Site Domain]</a></span></span>
       </div>
       <ul class="compact-list">
+          <li>[Describe any notable recognition or reception]</li>
           <li>[Describe any notable recognition or reception]</li>
           <li>[Describe any notable recognition or reception]</li>
       </ul>
     </div>
     <div class="entry">
       <div class="entry-header">
-          <span class="entry-name"><i class="fab fa-github"></i> <a href="[Github Repo or Link]">[Project Name]</a></span>
+          <span class="entry-name">[Project Name] — [Short one-line tagline describing the project] <span class="site-link"><a href="[Project URL]">[Site Domain]</a></span></span>
       </div>
       <ul class="compact-list">
+          <li>[Describe any notable recognition or reception]</li>
           <li>[Describe any notable recognition or reception]</li>
           <li>[Describe any notable recognition or reception]</li>
       </ul>
@@ -177,26 +180,34 @@ prompt_additional_skills_template = """
 - **HTML Template**
 '''
 <section id="skills-languages">
-    <h2>Additional Skills</h2>
+    <h2>Technical Skills</h2>
     <div class="two-column">
       <ul class="compact-list">
-          <li>[Specific Skill or Technology]</li>
-          <li>[Specific Skill or Technology]</li>
-          <li>[Specific Skill or Technology]</li>
-          <li>[Specific Skill or Technology]</li>
-          <li>[Specific Skill or Technology]</li>
-          <li>[Specific Skill or Technology]</li>
+          <li><strong>AI/ML:</strong> [Skill], [Skill], [Skill], [Skill]</li>
+          <li><strong>Languages:</strong> [Language], [Language], [Language]</li>
+          <li><strong>Frameworks:</strong> [Framework], [Framework], [Framework]</li>
+          <li><strong>Cloud & DevOps:</strong> [Skill], [Skill], [Skill]</li>
+          <li><strong>Tools & Platforms:</strong> [Tool], [Tool], [Tool]</li>
+          <li><strong>Databases:</strong> [DB], [DB]</li>
       </ul>
       <ul class="compact-list">
-          <li>[Specific Skill or Technology]</li>
-          <li>[Specific Skill or Technology]</li>
-          <li>[Specific Skill or Technology]</li>
-          <li>[Specific Skill or Technology]</li>
-          <li>[Specific Skill or Technology]</li>
-          <li><strong>Languages:</strong> </li>
+          <li><strong>Methodologies:</strong> [Method], [Method]</li>
+          <li><strong>Soft Skills:</strong> [Skill], [Skill], [Skill]</li>
+          <li><strong>Certifications:</strong> [Cert], [Cert]</li>
+          <li><strong>Interests:</strong> [Interest], [Interest], [Interest]</li>
+          <li><strong>Spoken Languages:</strong> [Language] ([Proficiency]), [Language] ([Proficiency])</li>
       </ul>
     </div>
 </section>
 '''
+
+## Guidelines
+- Include ALL skills from the provided skills list — do not omit any.
+- Group related skills under bold category headers (e.g., **AI/ML:**, **Languages:**, **Frameworks:**).
+- Tailor skill emphasis to the job description: prioritize skills that match the role requirements.
+- Include spoken languages with proficiency levels at the end.
+- If any category has no relevant skills, omit that line entirely.
+- Use concise comma-separated lists within each category rather than one skill per bullet.
+
 The results should be provided in html format, Provide only the html code for the resume, without any explanations or additional text and also without ```html ```
 """
