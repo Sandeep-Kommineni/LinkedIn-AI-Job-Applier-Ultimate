@@ -96,9 +96,7 @@ class TestCheckSalaryThreshold:
         return {
             "enabled": True,
             "min_annual_inr": 500000,
-            "max_annual_inr": 1200000,
             "min_annual_usd": 14000,
-            "max_annual_usd": 120000,
         }
 
     @pytest.fixture
@@ -126,7 +124,7 @@ class TestCheckSalaryThreshold:
         assert skip is False
 
     def test_high_lpa_allows_job(self, enabled_config):
-        skip, reason = check_salary_threshold("CTC: 12 LPA", enabled_config)
+        skip, reason = check_salary_threshold("CTC: 20 LPA", enabled_config)
         assert skip is False
 
     def test_range_lpa_above_min_allows_job(self, enabled_config):
@@ -148,8 +146,3 @@ class TestCheckSalaryThreshold:
     def test_acceptable_usd_allows_job(self, enabled_config):
         skip, reason = check_salary_threshold("$60,000 per year", enabled_config)
         assert skip is False
-
-    def test_overqualified_inr_skips(self, enabled_config):
-        skip, reason = check_salary_threshold("CTC: 20 LPA", enabled_config)
-        assert skip is True
-        assert "exceeds maximum threshold" in reason

@@ -578,28 +578,19 @@ def check_salary_threshold(
         return False, ""
 
     min_inr = salary_filter_config.get("min_annual_inr") or 0
-    max_inr = salary_filter_config.get("max_annual_inr") or float("inf")
     min_usd = salary_filter_config.get("min_annual_usd") or 0
-    max_usd = salary_filter_config.get("max_annual_usd") or float("inf")
 
-    # Check INR salary
+    # Check INR salary — skip only if the max offered is below our minimum
     if parsed["min_annual_inr"] is not None:
         detected_min = parsed["min_annual_inr"]
         detected_max = parsed["max_annual_inr"] or detected_min
-        # Skip if even the maximum offered is below our minimum
         if detected_max < min_inr:
             return True, (
                 f"Salary {parsed['raw_match']} ({detected_min:,}-{detected_max:,} INR/year) "
                 f"is below minimum threshold ({min_inr:,} INR/year)"
             )
-        # Skip if the minimum offered exceeds our maximum (overqualified signal)
-        if detected_min > max_inr:
-            return True, (
-                f"Salary {parsed['raw_match']} ({detected_min:,} INR/year) "
-                f"exceeds maximum threshold ({max_inr:,} INR/year)"
-            )
 
-    # Check USD salary
+    # Check USD salary — skip only if the max offered is below our minimum
     if parsed["min_annual_usd"] is not None:
         detected_min = parsed["min_annual_usd"]
         detected_max = parsed["max_annual_usd"] or detected_min
@@ -607,11 +598,6 @@ def check_salary_threshold(
             return True, (
                 f"Salary {parsed['raw_match']} (${detected_min:,}-${detected_max:,}/year) "
                 f"is below minimum threshold (${min_usd:,}/year)"
-            )
-        if detected_min > max_usd:
-            return True, (
-                f"Salary {parsed['raw_match']} (${detected_min:,}/year) "
-                f"exceeds maximum threshold (${max_usd:,}/year)"
             )
 
     return False, ""
