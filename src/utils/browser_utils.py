@@ -643,10 +643,10 @@ async def HTML_to_PDF(FilePath):
             width="8.27in",  # A4 width
             height="11.69in",  # A4 height
             margin={
-                "top": "0.8in",
-                "bottom": "0.8in",
-                "left": "0.5in",
-                "right": "0.5in",
+                "top": "0.4in",
+                "bottom": "0.4in",
+                "left": "0.35in",
+                "right": "0.35in",
             },
             prefer_css_page_size=True,
         )
