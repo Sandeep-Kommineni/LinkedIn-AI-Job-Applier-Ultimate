@@ -198,6 +198,7 @@ class SearchCustomizer(BaseSearchCustomizer):
         try:
             date_mapping = {
                 "24_hours": "Past 24 hours",
+                "day_24_hours": "Past 24 hours",
                 "week": "Past week",
                 "month": "Past month",
                 "all_time": "Any time",

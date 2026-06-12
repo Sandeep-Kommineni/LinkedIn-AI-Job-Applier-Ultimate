@@ -302,9 +302,13 @@ class LinkedInJobManager(BaseJobManager):
                 await self._handle_apply_result(apply_result, job)
                 return "Error"
 
-            if self._is_blacklisted(sanitize_text(company_name)):
-                apply_result = "Skip", "Vacancy in the blacklist"
-                logger.warning("Vacancy in the blacklist, skipping")
+            if self.search_component.is_job_blacklisted(
+                sanitize_text(company_job_title),
+                sanitize_text(company_name),
+                sanitize_text(job.location),
+            ):
+                apply_result = "Skip", "Vacancy in the blacklist (title, company, or location)"
+                logger.warning("Vacancy blacklisted, skipping")
                 await async_pause(1, 2)
                 await self._handle_apply_result(apply_result, job)
                 return "Skip"

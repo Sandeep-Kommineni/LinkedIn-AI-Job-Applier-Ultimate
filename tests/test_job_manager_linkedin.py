@@ -853,11 +853,12 @@ class TestApplyJob:
         manager.apply_once_at_company = True
         manager.job_blacklist = []
         manager.pause_checker = None
+        manager.search_component.is_job_blacklisted.return_value = False
 
     @pytest.mark.asyncio
     async def test_skips_blacklisted_company(self, manager, mock_page, test_job):
         self._setup_manager(manager)
-        manager.job_blacklist = ["tech corp"]
+        manager.search_component.is_job_blacklisted.return_value = True
         new_page = AsyncMock()
         new_page.url = LINKEDIN_JOB_URL
         mock_page.context.new_page = AsyncMock(return_value=new_page)

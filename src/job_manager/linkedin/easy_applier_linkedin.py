@@ -381,10 +381,12 @@ class LinkedInEasyApplier(BaseEasyApplier):
                 return True
             attempt += 1
         else:
-            logger.error(f"Form submission failed with errors: {str(error_texts)}")
-            raise Exception(
-                f"Failed to answer questions or file upload with errors: {str(error_texts)}"
+            error_summary = str(error_texts) if error_texts else "unknown validation errors"
+            logger.warning(
+                f"Form submission still has errors after 3 attempts: {error_summary}. "
+                "Skipping this application gracefully."
             )
+            return False
 
     async def _discard_application(self) -> None:
         """Discard application (async)"""
@@ -1860,7 +1862,9 @@ class LinkedInEasyApplier(BaseEasyApplier):
             # Find the textbox/textarea to correct within this section
             target_input: Any | None = None
             all_inputs_loc = section.locator(
-                "input[type='text'], textarea, .artdeco-text-input--input"
+                "input[type='text'], input[type='number'], input[type='tel'], "
+                "textarea, .artdeco-text-input--input, "
+                "input.fb-dash-form-element__input"
             )
             vis_indices = await all_inputs_loc.evaluate_all(
                 "els => els.map((e, i) => e.offsetParent !== null ? i : -1).filter(i => i >= 0)"

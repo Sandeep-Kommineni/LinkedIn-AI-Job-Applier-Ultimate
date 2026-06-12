@@ -387,8 +387,8 @@ class TestCheckAndFixErrors:
         applier._fill_textbox_question_errors = AsyncMock()
         applier._find_next_or_submit_button = AsyncMock(return_value=(mock_button, "next"))
         with patch("src.job_manager.linkedin.easy_applier_linkedin.async_pause"):
-            with pytest.raises(Exception, match="Failed to answer questions"):
-                await applier._check_and_fix_errors(mock_button)
+            result = await applier._check_and_fix_errors(mock_button)
+        assert result is False
 
     @pytest.mark.asyncio
     async def test_fixes_errors_then_succeeds(self, applier):
