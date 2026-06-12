@@ -1,0 +1,292 @@
+/*Cobalt Pro$https://github.com/Sandeep-Kommineni*/
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
+
+:root {
+  --text: #141414;
+  --link: #0055b8;
+  --body-font: "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--body-font);
+  font-size: 9pt;
+  line-height: 1.35;
+  color: var(--text);
+  max-width: 8.27in;
+  margin: 0 auto;
+  padding: 0.2in 0.25in;
+  background: #fff;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── HEADER ─────────────────────────────────────────────────────────────── */
+header {
+  text-align: center;
+  margin-bottom: 3pt;
+}
+
+h1 {
+  font-size: 14pt;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 1pt;
+}
+
+/* Contact info line: inline spans with pipe separators */
+.contact-info {
+  font-size: 8pt;
+  line-height: 1.5;
+  color: var(--text);
+  text-align: center;
+}
+
+.contact-info span {
+  margin: 0;
+}
+
+.contact-info a {
+  color: var(--link);
+  text-decoration: none;
+}
+
+/* Pipe separators */
+.contact-info .sep,
+.contact-links .sep {
+  margin: 0 3pt;
+  color: var(--text);
+  font-size: 8pt;
+}
+
+/* Only hide Font Awesome icon pseudo-elements, not the container text */
+.fa::before, .fas::before, .fab::before, .far::before {
+  display: none !important;
+  content: none !important;
+}
+
+/* Contact links line */
+.contact-links {
+  display: block;
+  width: 100%;
+  font-size: 8pt;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.contact-links a {
+  color: var(--link);
+  text-decoration: none;
+}
+
+/* Legacy support: pipe separators between <p> contact items (old template) */
+.contact-info > p:not(:last-of-type)::after,
+.contact-links p:not(:last-child)::after {
+  content: " | ";
+  color: var(--text);
+}
+
+.contact-info p {
+  display: inline;
+  margin: 0;
+}
+
+.contact-links p {
+  display: inline;
+}
+
+/* Header horizontal rule (matches LaTeX \rule{\linewidth}{0.4pt}) */
+.header-rule,
+header hr {
+  border: none;
+  border-top: 0.4pt solid var(--text);
+  margin-top: 3pt;
+  margin-bottom: 0;
+}
+
+/* ── SECTION TITLES ─────────────────────────────────────────────────────── */
+section {
+  margin-bottom: 6pt;
+}
+
+h2 {
+  font-size: 8pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--text);
+  margin-bottom: 2pt;
+  border-bottom: 0.4pt solid var(--text);
+  padding-bottom: 1pt;
+  break-after: avoid;
+}
+
+/* ── ENTRY BLOCKS (experience, education, projects) ────────────────────── */
+.entry {
+  margin-bottom: 3pt;
+}
+
+.entry-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  break-after: avoid;
+}
+
+.entry-name {
+  font-weight: 700;
+  font-size: 9pt;
+  color: var(--text);
+}
+
+.entry-location {
+  font-size: 8pt;
+  font-style: italic;
+  color: var(--text);
+  text-align: right;
+}
+
+.entry-details {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  margin-bottom: 1pt;
+  break-after: avoid;
+}
+
+.entry-title {
+  font-size: 8pt;
+  font-style: italic;
+  color: var(--text);
+}
+
+.entry-year {
+  font-size: 8pt;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+/* ── LISTS ──────────────────────────────────────────────────────────────── */
+.compact-list {
+  list-style: none;
+  padding-left: 0.85em;
+  margin: 0;
+}
+
+.compact-list li {
+  position: relative;
+  margin-bottom: 0.5pt;
+  line-height: 1.35;
+  color: var(--text);
+  font-size: 8.5pt;
+}
+
+.compact-list li::before {
+  content: "\2022";
+  position: absolute;
+  left: -0.85em;
+  top: 0;
+  color: var(--text);
+}
+
+/* ── STRONG / BOLD ──────────────────────────────────────────────────────── */
+strong {
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* ── LINKS ──────────────────────────────────────────────────────────────── */
+a {
+  color: var(--link);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* ── SITE LINKS ──────────────────────────────────────────────────────── */
+.site-link {
+  margin-left: 6pt;
+  font-weight: 400;
+  font-size: 8pt;
+}
+
+.site-link a {
+  color: var(--link);
+  text-decoration: none;
+}
+
+.site-link a:hover {
+  text-decoration: underline;
+}
+
+/* ── CERTIFICATIONS ──────────────────────────────────────────────────────── */
+#certifications .compact-list {
+  padding-left: 0.85em;
+  list-style: none;
+}
+
+#certifications .compact-list li {
+  display: block;
+  padding-left: 0;
+  margin-bottom: 2pt;
+  font-size: 8pt;
+}
+
+#certifications .compact-list li::before {
+  display: none;
+}
+
+#certifications .compact-list li:not(:last-child)::after {
+  display: none;
+}
+
+/* ── ACHIEVEMENTS ───────────────────────────────────────────────────────── */
+#achievements .compact-list li {
+  font-size: 8.5pt;
+}
+
+/* ── TWO-COLUMN SKILLS ──────────────────────────────────────────────────── */
+.two-column {
+  display: flex;
+  gap: 1.5em;
+}
+
+.two-column .compact-list {
+  flex: 1;
+  padding-left: 0;
+  list-style: none;
+}
+
+.two-column .compact-list li {
+  padding-left: 0;
+  margin-bottom: 0.5pt;
+  font-size: 8pt;
+}
+
+.two-column .compact-list li::before {
+  display: none;
+}
+
+/* ── PRINT ──────────────────────────────────────────────────────────────── */
+@media print {
+  body {
+    padding: 0.2in 0.25in;
+    max-width: none;
+  }
+  h2 {
+    break-after: avoid;
+  }
+  .entry-header,
+  .entry-details {
+    break-after: avoid;
+  }
+}
