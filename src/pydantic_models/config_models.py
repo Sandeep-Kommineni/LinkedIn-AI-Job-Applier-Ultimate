@@ -48,6 +48,23 @@ class DatePosted(BaseModel):
         return self
 
 
+class SalaryFilter(BaseModel):
+    """Configuration for salary-based job filtering.
+
+    When enabled, jobs that explicitly mention salary below the configured
+    minimum are skipped.  Jobs that do not mention salary are always allowed.
+
+    Thresholds are expressed in annual amounts:
+      - min_annual_inr / max_annual_inr  (Indian Rupees, e.g. 500000 = 5 LPA)
+      - min_annual_usd / max_annual_usd  (US Dollars)
+    """
+    enabled: bool = False
+    min_annual_inr: Optional[int] = 500000      # 5 LPA default
+    max_annual_inr: Optional[int] = 1200000     # 12 LPA default
+    min_annual_usd: Optional[int] = 14000       # $14k default
+    max_annual_usd: Optional[int] = 120000      # $120k default
+
+
 class SearchConfig(BaseModel):
     # Search criteria
     positions: List[str]
@@ -76,6 +93,9 @@ class SearchConfig(BaseModel):
     company_blacklist: Optional[List[str]] = []
     title_blacklist: Optional[List[str]] = []
     location_blacklist: Optional[List[str]] = []
+
+    # Salary filter
+    salary_filter: Optional[SalaryFilter] = SalaryFilter()
 
     @field_validator(
         "locations",

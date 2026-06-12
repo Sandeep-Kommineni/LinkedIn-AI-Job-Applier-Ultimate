@@ -26,6 +26,7 @@ class BaseSearchCustomizer(ABC):
         self.company_blacklist = []
         self.title_blacklist = []
         self.location_blacklist = []
+        self.salary_filter = {}
 
     def set_advanced_search_params(self, parameters: Dict[str, Any]) -> None:
         """Set search parameters from config"""
@@ -42,6 +43,7 @@ class BaseSearchCustomizer(ABC):
         self.company_blacklist = parameters.get("company_blacklist") or []
         self.title_blacklist = parameters.get("title_blacklist") or []
         self.location_blacklist = parameters.get("location_blacklist") or []
+        self.salary_filter = parameters.get("salary_filter") or {}
         logger.info(f"{self.__class__.__name__} parameters successfully set")
 
     def is_job_blacklisted(self, job_title: str, company_name: str, job_location: str) -> bool:

@@ -43,7 +43,7 @@ from src.utils.browser_utils import (
     safe_click,
     scroll_slowly,
 )
-from src.utils.utils import async_pause, load_yaml_file, sanitize_text
+from src.utils.utils import async_pause, check_salary_threshold, load_yaml_file, sanitize_text
 
 search_config = load_yaml_file(SEARCH_CONFIG_FILE)
 logger.info(f"Maximum allowed number of applications: {MAX_APPLIES_NUM}")
@@ -312,6 +312,19 @@ class LinkedInJobManager(BaseJobManager):
                 await async_pause(1, 2)
                 await self._handle_apply_result(apply_result, job)
                 return "Skip"
+
+            # Salary threshold check
+            salary_filter_config = self.search_component.salary_filter or {}
+            if salary_filter_config:
+                salary_skip, salary_reason = check_salary_threshold(
+                    job.job_description, salary_filter_config
+                )
+                if salary_skip:
+                    apply_result = "Skip", salary_reason
+                    logger.warning(f"Salary below threshold, skipping: {salary_reason}")
+                    await async_pause(1, 2)
+                    await self._handle_apply_result(apply_result, job)
+                    return "Skip"
 
             is_seen, reason = self._job_is_already_seen(job)
             if is_seen:

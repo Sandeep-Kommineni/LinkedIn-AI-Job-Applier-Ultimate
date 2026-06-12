@@ -396,3 +396,222 @@ def clean_structured_resume(structured_resume: Dict[str, Any]) -> Dict[str, Any]
 
     cleaned_resume = clean_value(structured_resume)
     return cleaned_resume if cleaned_resume is not None else {}
+
+
+def parse_salary_from_text(text: str) -> dict:
+    """Parse salary information from job description text.
+
+    Detects common salary formats in both INR and USD:
+      - LPA: "5 LPA", "12 lpa", "5-12 LPA"
+      - Lakhs: "₹5 lakhs", "5-8 lakh per annum"
+      - Monthly INR: "₹50,000 per month", "₹10k/month"
+      - Annual INR: "₹6,00,000", "600000 per year"
+      - USD annual: "$60,000", "$60k-$80k"
+      - USD monthly: "$5,000 per month"
+
+    Returns:
+        dict with keys:
+          - found: bool
+          - min_annual_inr: int or None
+          - max_annual_inr: int or None
+          - min_annual_usd: int or None
+          - max_annual_usd: int or None
+          - raw_match: str  (the text that was matched)
+    """
+    result = {
+        "found": False,
+        "min_annual_inr": None,
+        "max_annual_inr": None,
+        "min_annual_usd": None,
+        "max_annual_usd": None,
+        "raw_match": "",
+    }
+
+    if not text:
+        return result
+
+    def _parse_number(s: str) -> float:
+        """Parse a number string that may contain commas, k/K, or lakh/L."""
+        s = s.strip().replace(",", "")
+        multiplier = 1
+        if s.lower().endswith("k"):
+            s = s[:-1]
+            multiplier = 1000
+        elif s.lower().endswith("l") and not s.lower().endswith("lpa"):
+            s = s[:-1]
+            multiplier = 100000
+        try:
+            return float(s) * multiplier
+        except ValueError:
+            return 0
+
+    # Pattern 1: X LPA / X-Y LPA
+    lpa_match = re.search(
+        r"(\d+(?:\.\d+)?)\s*(?:-\s*(\d+(?:\.\d+)?))?\s*LPA",
+        text,
+        re.IGNORECASE,
+    )
+    if lpa_match:
+        low = float(lpa_match.group(1)) * 100000
+        high = float(lpa_match.group(2)) * 100000 if lpa_match.group(2) else low
+        result["found"] = True
+        result["min_annual_inr"] = int(low)
+        result["max_annual_inr"] = int(high)
+        result["raw_match"] = lpa_match.group(0)
+        return result
+
+    # Pattern 2: X lakh(s) per annum / X-Y lakhs
+    lakh_match = re.search(
+        r"(\d+(?:\.\d+)?)\s*(?:-\s*(\d+(?:\.\d+)?))?\s*lakhs?\s*(?:per\s*annum|per\s*year|/\s*year|p\.?a\.?|pa)?",
+        text,
+        re.IGNORECASE,
+    )
+    if lakh_match:
+        low = float(lakh_match.group(1)) * 100000
+        high = float(lakh_match.group(2)) * 100000 if lakh_match.group(2) else low
+        result["found"] = True
+        result["min_annual_inr"] = int(low)
+        result["max_annual_inr"] = int(high)
+        result["raw_match"] = lakh_match.group(0)
+        return result
+
+    # Pattern 3: ₹ amount per month / ₹X,XX,XXX/month
+    inr_monthly_match = re.search(
+        r"[₹]\s*(\d[\d,]*\.?\d*)\s*(?:k\b)?\s*(?:per\s*month|/\s*month|pm\b|monthly)",
+        text,
+        re.IGNORECASE,
+    )
+    if inr_monthly_match:
+        raw_num = inr_monthly_match.group(1)
+        num = _parse_number(raw_num)
+        if "k" in text[inr_monthly_match.start() : inr_monthly_match.end()].lower():
+            num *= 1000
+        result["found"] = True
+        result["min_annual_inr"] = int(num * 12)
+        result["max_annual_inr"] = int(num * 12)
+        result["raw_match"] = inr_monthly_match.group(0)
+        return result
+
+    # Pattern 4: ₹ annual amount (Indian number format or plain number)
+    inr_annual_match = re.search(
+        r"[₹]\s*(\d{1,3}(?:,\d{2,3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*(?:per\s*(?:annum|year)|/\s*(?:annum|year)|p\.?a\.?|pa\b|per\s*year|CTC)?",
+        text,
+        re.IGNORECASE,
+    )
+    if inr_annual_match:
+        raw_num = inr_annual_match.group(1)
+        num = _parse_number(raw_num)
+        # If number looks like monthly (less than 50000), treat as monthly
+        if num < 50000:
+            num *= 12
+        result["found"] = True
+        result["min_annual_inr"] = int(num)
+        result["max_annual_inr"] = int(num)
+        result["raw_match"] = inr_annual_match.group(0)
+        return result
+
+    # Pattern 5: $ amount per month
+    usd_monthly_match = re.search(
+        r"\$\s*(\d[\d,]*\.?\d*)\s*(?:k\b)?\s*(?:per\s*month|/\s*month|pm\b|monthly)",
+        text,
+        re.IGNORECASE,
+    )
+    if usd_monthly_match:
+        raw_num = usd_monthly_match.group(1)
+        num = _parse_number(raw_num)
+        if "k" in text[usd_monthly_match.start() : usd_monthly_match.end()].lower():
+            num *= 1000
+        result["found"] = True
+        result["min_annual_usd"] = int(num * 12)
+        result["max_annual_usd"] = int(num * 12)
+        result["raw_match"] = usd_monthly_match.group(0)
+        return result
+
+    # Pattern 6: $ annual amount (range or single)
+    usd_annual_match = re.search(
+        r"\$\s*(\d[\d,]*\.?\d*)\s*(k\b)?\s*(?:-\s*(?:\$\s*)?(\d[\d,]*\.?\d*)\s*(k\b)?)?"
+        r"\s*(?:per\s*(?:annum|year)|/\s*(?:annum|year)|p\.?a\.?|pa\b|per\s*year|annual|salary|CTC)?",
+        text,
+        re.IGNORECASE,
+    )
+    if usd_annual_match:
+        raw_low = usd_annual_match.group(1)
+        low = _parse_number(raw_low)
+        if usd_annual_match.group(2):  # low has 'k' suffix
+            low *= 1000
+        if usd_annual_match.group(3):  # high value present
+            raw_high = usd_annual_match.group(3)
+            high = _parse_number(raw_high)
+            if usd_annual_match.group(4):  # high has 'k' suffix
+                high *= 1000
+        else:
+            high = low
+        result["found"] = True
+        result["min_annual_usd"] = int(low)
+        result["max_annual_usd"] = int(high)
+        result["raw_match"] = usd_annual_match.group(0)
+        return result
+
+    return result
+
+
+def check_salary_threshold(
+    job_description: str,
+    salary_filter_config: dict,
+) -> tuple[bool, str]:
+    """Check if a job's salary meets the configured minimum threshold.
+
+    Args:
+        job_description: The full job description text.
+        salary_filter_config: Dict from SalaryFilter.model_dump().
+
+    Returns:
+        (should_skip, reason) tuple:
+          - (False, "") if no salary found or salary meets threshold
+          - (True, reason) if salary is explicitly below minimum
+    """
+    if not salary_filter_config.get("enabled", False):
+        return False, ""
+
+    parsed = parse_salary_from_text(job_description)
+    if not parsed["found"]:
+        return False, ""
+
+    min_inr = salary_filter_config.get("min_annual_inr") or 0
+    max_inr = salary_filter_config.get("max_annual_inr") or float("inf")
+    min_usd = salary_filter_config.get("min_annual_usd") or 0
+    max_usd = salary_filter_config.get("max_annual_usd") or float("inf")
+
+    # Check INR salary
+    if parsed["min_annual_inr"] is not None:
+        detected_min = parsed["min_annual_inr"]
+        detected_max = parsed["max_annual_inr"] or detected_min
+        # Skip if even the maximum offered is below our minimum
+        if detected_max < min_inr:
+            return True, (
+                f"Salary {parsed['raw_match']} ({detected_min:,}-{detected_max:,} INR/year) "
+                f"is below minimum threshold ({min_inr:,} INR/year)"
+            )
+        # Skip if the minimum offered exceeds our maximum (overqualified signal)
+        if detected_min > max_inr:
+            return True, (
+                f"Salary {parsed['raw_match']} ({detected_min:,} INR/year) "
+                f"exceeds maximum threshold ({max_inr:,} INR/year)"
+            )
+
+    # Check USD salary
+    if parsed["min_annual_usd"] is not None:
+        detected_min = parsed["min_annual_usd"]
+        detected_max = parsed["max_annual_usd"] or detected_min
+        if detected_max < min_usd:
+            return True, (
+                f"Salary {parsed['raw_match']} (${detected_min:,}-${detected_max:,}/year) "
+                f"is below minimum threshold (${min_usd:,}/year)"
+            )
+        if detected_min > max_usd:
+            return True, (
+                f"Salary {parsed['raw_match']} (${detected_min:,}/year) "
+                f"exceeds maximum threshold (${max_usd:,}/year)"
+            )
+
+    return False, ""
