@@ -445,12 +445,24 @@ class SearchCustomizer(BaseSearchCustomizer):
             logger.info(f"Filter chip toggled: {chip_name}")
             return
 
+        # Wait for dropdown to fully render after clicking the chip
+        await async_pause(2, 3)
+
         # Select the option from the dropdown that appeared
         option_selectors = [
             f"//label[contains(., '{option_text}')]",
             f"//li[contains(., '{option_text}')]",
             f"//div[contains(@role, 'option') and contains(., '{option_text}')]",
             f"//*[contains(@class, 'search-reusables__filter') and contains(., '{option_text}')]",
+            f"//span[contains(., '{option_text}')]",
+            f"//input[@type='checkbox']/../*[contains(., '{option_text}')]",
+            f"//*[contains(@role, 'checkbox')]/../*[contains(., '{option_text}')]",
+            f"//*[contains(@class, 'filter-value') and contains(., '{option_text}')]",
+            f"//*[contains(@class, 'search-reusables') and contains(., '{option_text}')]",
+            f"//*[contains(@data-test-filter-value) and contains(., '{option_text}')]",
+            f"//*[contains(@id, 'filter') and contains(., '{option_text}')]",
+            f"//input[contains(@id, '{option_text.lower().replace(' ', '-')}')]",
+            f"//*[normalize-space()='{option_text}']",
         ]
 
         for selector in option_selectors:
@@ -471,6 +483,40 @@ class SearchCustomizer(BaseSearchCustomizer):
                 return
 
         logger.warning(f"Could not select option '{option_text}' in chip '{chip_name}'")
+
+        # Last resort: try JavaScript click on any visible element containing the text
+        try:
+            clicked = await self.page.evaluate(
+                """(text) => {
+                    const walker = document.createTreeWalker(
+                        document.body, NodeFilter.SHOW_ELEMENT
+                    );
+                    while (walker.nextNode()) {
+                        const el = walker.currentNode;
+                        if (el.textContent && el.textContent.trim() === text
+                            && el.offsetParent !== null) {
+                            el.click();
+                            return true;
+                        }
+                    }
+                    return false;
+                }""",
+                option_text,
+            )
+            if clicked:
+                logger.info(f"JS click succeeded for option '{option_text}'")
+                await async_pause(1, 2)
+                # Try to click Show results
+                for apply_sel in [
+                    "//button[contains(., 'Show results')]",
+                    "//button[contains(., 'Done')]",
+                    "//button[contains(., 'Apply')]",
+                ]:
+                    if await safe_click(self.page, apply_sel, timeout=2000):
+                        await async_pause(2, 3)
+                        return
+        except Exception as e:
+            logger.debug(f"JS click fallback failed: {e}")
 
     async def _open_all_filters(self):
         """Open 'All filters' modal window (async)"""
