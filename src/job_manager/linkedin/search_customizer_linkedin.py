@@ -44,6 +44,7 @@ class SearchCustomizer(BaseSearchCustomizer):
 
     def __init__(self, page: Union[Page, Any]):
         super().__init__(page)
+        self._ai_search_active = False
         logger.info("SearchCustomizer initialized")
 
     async def _open_recommended_jobs(self) -> None:
@@ -207,14 +208,17 @@ class SearchCustomizer(BaseSearchCustomizer):
         """
         logger.info("Attempting to activate LinkedIn AI-powered search")
 
-        # Step 1: Click the "Find jobs with AI" button/link
+        # Step 1: Click the "Try AI job search" button/link
         ai_button_selectors = [
+            "//a[contains(., 'Try AI job search')]",
+            "//button[contains(., 'Try AI job search')]",
+            "//span[contains(., 'Try AI job search')]/..",
+            "//a[contains(., 'Find jobs with AI')]",
             "//button[contains(., 'Find jobs with AI')]",
             "//span[contains(., 'Find jobs with AI')]/..",
-            "//a[contains(., 'Find jobs with AI')]",
             "[data-test-ai-search-toggle]",
             "button[aria-label*='AI']",
-            "//button[contains(@aria-label, 'Find jobs with AI')]",
+            "//a[contains(@aria-label, 'AI')]",
             ".jobs-search-box__ai-search-button",
             "//button[contains(., 'Search with AI')]",
             "//button[contains(., 'AI search')]",
@@ -230,7 +234,7 @@ class SearchCustomizer(BaseSearchCustomizer):
 
         if not ai_activated:
             logger.warning(
-                "Could not find 'Find jobs with AI' button. "
+                "Could not find 'Try AI job search' button. "
                 "This feature may not be available in your region or LinkedIn plan. "
                 "Falling back to classic keyword search."
             )
@@ -337,19 +341,40 @@ class SearchCustomizer(BaseSearchCustomizer):
             logger.error(f"Error setting date filter: {e}")
 
     async def _set_experience_level_filter(self):
-        """Set experience level filter (async)"""
+        """Set experience level filter (async).
+
+        Note: AI search and classic search have different experience level options.
+        Classic: Internship, Entry level, Associate, Mid-Senior level, Director, Executive
+        AI:      Entry-level, Senior, Manager, Director, Executive
+        """
         if not self.experience_level:
             return
 
         try:
-            experience_mapping = {
-                "internship": "Internship",
-                "entry": "Entry level",
-                "associate": "Associate",
-                "mid_senior_level": "Mid-Senior level",
-                "director": "Director",
-                "executive": "Executive",
-            }
+            if self._ai_search_active:
+                # AI search has a different set of experience levels
+                experience_mapping = {
+                    "entry": "Entry-level",
+                    "mid_senior_level": "Senior",
+                    "director": "Director",
+                    "executive": "Executive",
+                    # Internship, Associate, Mid-Senior level are NOT available in AI search
+                }
+                unavailable = ["internship", "associate"]
+                for key in unavailable:
+                    if self.experience_level.get(key):
+                        logger.warning(
+                            f"Experience level '{key}' is not available in AI search mode, skipping"
+                        )
+            else:
+                experience_mapping = {
+                    "internship": "Internship",
+                    "entry": "Entry level",
+                    "associate": "Associate",
+                    "mid_senior_level": "Mid-Senior level",
+                    "director": "Director",
+                    "executive": "Executive",
+                }
 
             for exp_key, is_enabled in self.experience_level.items():
                 if is_enabled and exp_key in experience_mapping:
@@ -507,6 +532,7 @@ class SearchCustomizer(BaseSearchCustomizer):
             if LINKEDIN_AI_SEARCH_MODE:
                 ai_success = await self._activate_ai_search()
                 if ai_success:
+                    self._ai_search_active = True
                     logger.info("AI-powered search activated successfully")
                     # Still apply standard filters on top of AI search results
                     if await self._open_all_filters():
