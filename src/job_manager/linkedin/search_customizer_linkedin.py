@@ -416,165 +416,196 @@ class SearchCustomizer(BaseSearchCustomizer):
         then select the matching option from the dropdown.
         """
         logger.debug(f"Clicking AI filter chip: {chip_name}")
-
-        chip_selectors = [
-            f"//button[contains(@aria-label, '{chip_name}')]",
-            f"//button[contains(., '{chip_name}')]",
-            f"//button[normalize-space()='{chip_name}']",
-            f"//*[contains(@class, 'search-reusables__filter-pill') and contains(., '{chip_name}')]",
-            f"//*[contains(@class, 'artdeco-pill') and contains(., '{chip_name}')]",
-            f"//*[contains(@class, 'filter-pill') and contains(., '{chip_name}')]",
-            f"//*[contains(@class, 'chip') and contains(., '{chip_name}')]",
-            f"//*[contains(@role, 'button') and contains(., '{chip_name}')]",
-            f"//span[contains(., '{chip_name}')]/..",
-            f"//*[normalize-space()='{chip_name}']",
-        ]
-
+        
+        # Step 1: Click the filter chip <label> by its visible text
+        # DOM: <label class="_1e22b14f ..." for="«rXX»">Chip Name<svg>...</svg></label>
         chip_clicked = False
-        for selector in chip_selectors:
-            if await safe_click(self.page, selector, timeout=3000):
+        try:
+            chip = self.page.get_by_text(chip_name, exact=True)
+            if await chip.count() > 0:
+                await chip.first.click(force=True, timeout=3000)
                 chip_clicked = True
-                await async_pause(1, 2)
-                break
-
+                logger.info(f"Clicked filter chip via get_by_text: {chip_name}")
+        except Exception as e:
+            logger.debug(f"get_by_text failed for chip '{chip_name}': {e}")
+        
+        if not chip_clicked:
+            # Fallback: XPath targeting <label> containing the text
+            chip_selectors = [
+                f"//label[contains(., '{chip_name}')]",
+                f"//*[normalize-space()='{chip_name}']",
+                f"//*[contains(@role, 'button') and contains(., '{chip_name}')]",
+            ]
+            for selector in chip_selectors:
+                if await safe_click(self.page, selector, timeout=3000):
+                    chip_clicked = True
+                    await async_pause(1, 2)
+                    break
+        
         if not chip_clicked:
             logger.warning(f"Could not find filter chip: {chip_name}")
             return
-
+        
         if not option_text:
-            logger.info(f"Filter chip toggled: {chip_name}")
+            logger.info(f"Filter chip toggled (no dropdown): {chip_name}")
             return
 
         # Wait for dropdown to fully render after clicking the chip
         await async_pause(2, 3)
 
-        # Strategy 1: Use Playwright's native text/role locators (pierce shadow DOM)
+        # Step 2: Select the option from the dropdown
+        # DOM: Options are <label class="..." for="«rXX»"></label> with empty innerText
+        # The visible text is rendered by the parent container
+        option_clicked = False
+
+        # Strategy A: Playwright get_by_text with exact match (pierces shadow DOM)
+        # Try to find the visible rendered option text and click it
         try:
-            option_locator = self.page.get_by_text(option_text, exact=False)
-            count = await option_locator.count()
+            option = self.page.get_by_text(option_text, exact=True)
+            count = await option.count()
             if count > 0:
-                await option_locator.first.click(force=True, timeout=3000)
-                logger.info(f"Filter option selected via get_by_text: {chip_name} -> {option_text}")
-                await async_pause(1, 2)
-                await self._try_apply_filter_button()
-                return
+                # Click the first visible match
+                for i in range(count):
+                    el = option.nth(i)
+                    try:
+                        if await el.is_visible():
+                            await el.click(force=True, timeout=3000)
+                            option_clicked = True
+                            logger.info(f"Option selected via get_by_text: {option_text}")
+                            break
+                    except Exception:
+                        continue
         except Exception as e:
             logger.debug(f"get_by_text failed for '{option_text}': {e}")
 
+        # Strategy B: CSS :text-is() pseudo-class (exact text match, pierces shadow DOM)
+        if not option_clicked:
+            try:
+                option = self.page.locator(f":text-is('{option_text}')")
+                count = await option.count()
+                if count > 0:
+                    await option.first.click(force=True, timeout=3000)
+                    option_clicked = True
+                    logger.info(f"Option selected via :text-is(): {option_text}")
+            except Exception as e:
+                logger.debug(f":text-is() failed for '{option_text}': {e}")
+
+        # Strategy C: JS - find label whose parent contains the option text
+        if not option_clicked:
+            try:
+                option_clicked = await self.page.evaluate(
+                    """(optionText) => {
+                        const labels = document.querySelectorAll('label');
+                        for (const label of labels) {
+                            const parent = label.parentElement;
+                            if (parent && parent.textContent
+                                && parent.textContent.trim().includes(optionText)) {
+                                label.click();
+                                return true;
+                            }
+                        }
+                        return false;
+                    }""",
+                    option_text,
+                )
+                if option_clicked:
+                    logger.info(f"Option selected via JS parent text: {option_text}")
+            except Exception as e:
+                logger.debug(f"JS parent text click failed: {e}")
+
+        # Strategy D: JS TreeWalker - find any visible element with exact text
+        if not option_clicked:
+            try:
+                option_clicked = await self.page.evaluate(
+                    """(text) => {
+                        const walker = document.createTreeWalker(
+                            document.body, NodeFilter.SHOW_ELEMENT
+                        );
+                        while (walker.nextNode()) {
+                            const el = walker.currentNode;
+                            if (el.textContent && el.textContent.trim() === text
+                                && el.offsetParent !== null) {
+                                el.click();
+                                return true;
+                            }
+                        }
+                        return false;
+                    }""",
+                    option_text,
+                )
+                if option_clicked:
+                    logger.info(f"Option selected via JS TreeWalker: {option_text}")
+            except Exception as e:
+                logger.debug(f"JS TreeWalker fallback failed: {e}")
+
+        if not option_clicked:
+            logger.warning(f"Could not select option '{option_text}' in chip '{chip_name}'")
+            return
+
+        # Step 4: Click 'Show results' to apply the filter
+        await async_pause(1, 2)
+        await self._try_apply_filter_button()
+
+    async def _try_apply_filter_button(self) -> None:
+        """Click the 'Show results' <span> after selecting a filter option.
+
+        DOM: <span class="_929a07bf ..."><span class="_0d982122 ...">Show results</span></span>
+        """
+        # Strategy 1: Playwright get_by_text exact match (pierces shadow DOM)
         try:
-            option_locator = self.page.get_by_role("option", name=option_text)
-            count = await option_locator.count()
-            if count > 0:
-                await option_locator.first.click(force=True, timeout=3000)
-                logger.info(f"Filter option selected via get_by_role: {chip_name} -> {option_text}")
-                await async_pause(1, 2)
-                await self._try_apply_filter_button()
+            btn = self.page.get_by_text("Show results", exact=True)
+            if await btn.count() > 0:
+                await btn.first.click(force=True, timeout=3000)
+                logger.info("Clicked 'Show results' via get_by_text")
+                await async_pause(3, 4)
                 return
         except Exception as e:
-            logger.debug(f"get_by_role failed for '{option_text}': {e}")
+            logger.debug(f"get_by_text('Show results') failed: {e}")
 
-        # Strategy 2: Use Playwright CSS :text() pseudo-class (pierces shadow DOM)
+        # Strategy 2: CSS :text-is() exact match
         try:
-            css_locator = self.page.locator(f":text('{option_text}')")
-            count = await css_locator.count()
-            if count > 0:
-                await css_locator.first.click(force=True, timeout=3000)
-                logger.info(f"Filter option selected via :text(): {chip_name} -> {option_text}")
-                await async_pause(1, 2)
-                await self._try_apply_filter_button()
+            btn = self.page.locator(":text-is('Show results')")
+            if await btn.count() > 0:
+                await btn.first.click(force=True, timeout=3000)
+                logger.info("Clicked 'Show results' via :text-is()")
+                await async_pause(3, 4)
                 return
         except Exception as e:
-            logger.debug(f":text() selector failed for '{option_text}': {e}")
+            logger.debug(f":text-is('Show results') failed: {e}")
 
-        # Strategy 3: XPath selectors (may not pierce shadow DOM)
-        option_selectors = [
-            f"//label[contains(., '{option_text}')]",
-            f"//li[contains(., '{option_text}')]",
-            f"//div[contains(@role, 'option') and contains(., '{option_text}')]",
-            f"//span[contains(., '{option_text}')]",
-            f"//*[normalize-space()='{option_text}']",
-        ]
-
-        for selector in option_selectors:
-            if await safe_click(self.page, selector, timeout=2000):
-                logger.info(f"Filter option selected via XPath: {chip_name} -> {option_text}")
-                await async_pause(1, 2)
-                await self._try_apply_filter_button()
-                return
-
-        logger.warning(f"Could not select option '{option_text}' in chip '{chip_name}'")
-
-        # Strategy 4: JavaScript TreeWalker fallback
+        # Strategy 3: JS click on visible span with exact text "Show results"
         try:
             clicked = await self.page.evaluate(
-                """(text) => {
-                    const walker = document.createTreeWalker(
-                        document.body, NodeFilter.SHOW_ELEMENT
-                    );
-                    while (walker.nextNode()) {
-                        const el = walker.currentNode;
-                        if (el.textContent && el.textContent.trim() === text
-                            && el.offsetParent !== null) {
-                            el.click();
+                """() => {
+                    const spans = document.querySelectorAll('span');
+                    for (const span of spans) {
+                        if (span.textContent.trim() === 'Show results'
+                            && span.offsetParent !== null) {
+                            span.click();
                             return true;
                         }
                     }
                     return false;
-                }""",
-                option_text,
+                }"""
             )
             if clicked:
-                logger.info(f"JS click succeeded for option '{option_text}'")
-                await async_pause(1, 2)
-                await self._try_apply_filter_button()
+                logger.info("Clicked 'Show results' via JS")
+                await async_pause(3, 4)
+                return
         except Exception as e:
-            logger.debug(f"JS click fallback failed: {e}")
+            logger.debug(f"JS click on 'Show results' failed: {e}")
 
-    async def _try_apply_filter_button(self) -> None:
-        """Try to click Show results / Done / Apply button after selecting a filter option.
-
-        The button lives inside the same shadow DOM portal as the filter options,
-        so we use Playwright native locators that pierce shadow DOM.
-        """
-        button_texts = ["Show results", "Done", "Apply"]
-
-        # Strategy 1: Playwright get_by_role (pierces shadow DOM)
-        for text in button_texts:
-            try:
-                btn = self.page.get_by_role("button", name=text)
-                if await btn.count() > 0:
-                    await btn.first.click(force=True, timeout=3000)
-                    logger.info(f"Filter applied via '{text}' button (get_by_role)")
-                    await async_pause(2, 3)
-                    return
-            except Exception:
-                continue
-
-        # Strategy 2: Playwright get_by_text (pierces shadow DOM)
-        for text in button_texts:
-            try:
-                btn = self.page.get_by_text(text, exact=False)
-                if await btn.count() > 0:
-                    await btn.first.click(force=True, timeout=3000)
-                    logger.info(f"Filter applied via '{text}' button (get_by_text)")
-                    await async_pause(2, 3)
-                    return
-            except Exception:
-                continue
-
-        # Strategy 3: XPath fallback
-        apply_selectors = [
+        # Strategy 4: XPath fallback
+        for sel in [
+            "//span[normalize-space()='Show results']",
             "//button[contains(., 'Show results')]",
             "//button[contains(., 'Done')]",
-            "//button[contains(., 'Apply')]",
-        ]
-        for apply_sel in apply_selectors:
-            if await safe_click(self.page, apply_sel, timeout=1500):
-                await async_pause(2, 3)
+        ]:
+            if await safe_click(self.page, sel, timeout=1500):
+                await async_pause(3, 4)
                 return
 
-        # No button found — filter may have been auto-applied
-        logger.debug("No apply button found (filter may be auto-applied)")
+        logger.warning("Could not click 'Show results' button")
 
     async def _open_all_filters(self):
         """Open 'All filters' modal window (async)"""
