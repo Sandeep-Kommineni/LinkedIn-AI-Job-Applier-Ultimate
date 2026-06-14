@@ -531,8 +531,38 @@ class SearchCustomizer(BaseSearchCustomizer):
             logger.debug(f"JS click fallback failed: {e}")
 
     async def _try_apply_filter_button(self) -> None:
-        """Try to click Show results / Done / Apply button after selecting a filter option."""
-        # AI search page may auto-apply filters (no button needed)
+        """Try to click Show results / Done / Apply button after selecting a filter option.
+
+        The button lives inside the same shadow DOM portal as the filter options,
+        so we use Playwright native locators that pierce shadow DOM.
+        """
+        button_texts = ["Show results", "Done", "Apply"]
+
+        # Strategy 1: Playwright get_by_role (pierces shadow DOM)
+        for text in button_texts:
+            try:
+                btn = self.page.get_by_role("button", name=text)
+                if await btn.count() > 0:
+                    await btn.first.click(force=True, timeout=3000)
+                    logger.info(f"Filter applied via '{text}' button (get_by_role)")
+                    await async_pause(2, 3)
+                    return
+            except Exception:
+                continue
+
+        # Strategy 2: Playwright get_by_text (pierces shadow DOM)
+        for text in button_texts:
+            try:
+                btn = self.page.get_by_text(text, exact=False)
+                if await btn.count() > 0:
+                    await btn.first.click(force=True, timeout=3000)
+                    logger.info(f"Filter applied via '{text}' button (get_by_text)")
+                    await async_pause(2, 3)
+                    return
+            except Exception:
+                continue
+
+        # Strategy 3: XPath fallback
         apply_selectors = [
             "//button[contains(., 'Show results')]",
             "//button[contains(., 'Done')]",
@@ -542,6 +572,7 @@ class SearchCustomizer(BaseSearchCustomizer):
             if await safe_click(self.page, apply_sel, timeout=1500):
                 await async_pause(2, 3)
                 return
+
         # No button found — filter may have been auto-applied
         logger.debug("No apply button found (filter may be auto-applied)")
 
