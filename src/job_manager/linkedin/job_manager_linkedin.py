@@ -101,6 +101,8 @@ class LinkedInJobManager(BaseJobManager):
                 ".job-card-list__entity-lockup",
                 ".scaffold-layout__list-item",
                 "div[data-job-id]",
+                ".job-card-job-posting-card-wrapper",
+                "li[data-occludable-job-id]",
                 "//*[starts-with(@class, 'flex-grow-1')]",
             ]
 
@@ -138,6 +140,28 @@ class LinkedInJobManager(BaseJobManager):
                         f"Found {len(selector_vacancies)} job elements using selector: {selector}"
                     )
                     break
+
+            # If no jobs found via standard selectors, try fallback via job links
+            if not vacancies:
+                logger.debug("Trying fallback job detection via /jobs/view/ links")
+                job_links = await find_elements_safely(
+                    self.page, "a[href*='/jobs/view/']", "css selector"
+                )
+                if job_links:
+                    seen_urls = set()
+                    for link in job_links:
+                        try:
+                            href = await link.get_attribute("href") or ""
+                            url = self._normalize_job_url(href)
+                            if url and url not in seen_urls:
+                                seen_urls.add(url)
+                                vacancies.append({"url": url})
+                        except Exception:
+                            continue
+                    if vacancies:
+                        logger.info(
+                            f"Fallback found {len(vacancies)} jobs via /jobs/view/ links"
+                        )
 
             # If no jobs found on first page, log warning
             if self.page_num == 0 and len(vacancies) == 0:
@@ -485,6 +509,10 @@ class LinkedInJobManager(BaseJobManager):
                 ".jobs-search-results__list",
                 ".jobs-search-results__list-container",
                 ".jobs-search-results",
+                ".jobs-search-two-pane",
+                "ul.scaffold-layout__list-container",
+                "[data-test-job-card-list]",
+                ".job-card-job-posting-card-wrapper",
             ]
 
             for selector in container_selectors:
@@ -493,7 +521,7 @@ class LinkedInJobManager(BaseJobManager):
                     logger.debug(f"Found job container with selector: {selector}")
                     break
             else:
-                logger.debug("Could not find job container with selector: {selector}")
+                logger.debug(f"Could not find job container with selector: {selector}")
                 return
 
             # Try to scroll all scrollable elements

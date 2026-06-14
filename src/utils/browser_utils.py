@@ -200,6 +200,16 @@ async def safe_click(
         return True
 
     except Exception as e:
+        # Retry with force=true when an overlay intercepts the click
+        try:
+            locator2 = page.locator(selector)
+            if await locator2.count() > 0:
+                target2 = locator2.nth(element_number) if await locator2.count() > 1 else locator2
+                await target2.click(timeout=timeout, force=True)
+                logger.debug(f"Successfully force-clicked: {selector}")
+                return True
+        except Exception:
+            pass
         logger.warning(f"Failed to click element '{selector}': {e}")
         await debug_capture(page, "click_failed")
         return False
