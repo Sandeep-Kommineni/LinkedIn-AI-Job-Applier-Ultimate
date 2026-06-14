@@ -448,43 +448,63 @@ class SearchCustomizer(BaseSearchCustomizer):
         # Wait for dropdown to fully render after clicking the chip
         await async_pause(2, 3)
 
-        # Select the option from the dropdown that appeared
+        # Strategy 1: Use Playwright's native text/role locators (pierce shadow DOM)
+        try:
+            option_locator = self.page.get_by_text(option_text, exact=False)
+            count = await option_locator.count()
+            if count > 0:
+                await option_locator.first.click(force=True, timeout=3000)
+                logger.info(f"Filter option selected via get_by_text: {chip_name} -> {option_text}")
+                await async_pause(1, 2)
+                await self._try_apply_filter_button()
+                return
+        except Exception as e:
+            logger.debug(f"get_by_text failed for '{option_text}': {e}")
+
+        try:
+            option_locator = self.page.get_by_role("option", name=option_text)
+            count = await option_locator.count()
+            if count > 0:
+                await option_locator.first.click(force=True, timeout=3000)
+                logger.info(f"Filter option selected via get_by_role: {chip_name} -> {option_text}")
+                await async_pause(1, 2)
+                await self._try_apply_filter_button()
+                return
+        except Exception as e:
+            logger.debug(f"get_by_role failed for '{option_text}': {e}")
+
+        # Strategy 2: Use Playwright CSS :text() pseudo-class (pierces shadow DOM)
+        try:
+            css_locator = self.page.locator(f":text('{option_text}')")
+            count = await css_locator.count()
+            if count > 0:
+                await css_locator.first.click(force=True, timeout=3000)
+                logger.info(f"Filter option selected via :text(): {chip_name} -> {option_text}")
+                await async_pause(1, 2)
+                await self._try_apply_filter_button()
+                return
+        except Exception as e:
+            logger.debug(f":text() selector failed for '{option_text}': {e}")
+
+        # Strategy 3: XPath selectors (may not pierce shadow DOM)
         option_selectors = [
             f"//label[contains(., '{option_text}')]",
             f"//li[contains(., '{option_text}')]",
             f"//div[contains(@role, 'option') and contains(., '{option_text}')]",
-            f"//*[contains(@class, 'search-reusables__filter') and contains(., '{option_text}')]",
             f"//span[contains(., '{option_text}')]",
-            f"//input[@type='checkbox']/../*[contains(., '{option_text}')]",
-            f"//*[contains(@role, 'checkbox')]/../*[contains(., '{option_text}')]",
-            f"//*[contains(@class, 'filter-value') and contains(., '{option_text}')]",
-            f"//*[contains(@class, 'search-reusables') and contains(., '{option_text}')]",
-            f"//*[contains(@data-test-filter-value) and contains(., '{option_text}')]",
-            f"//*[contains(@id, 'filter') and contains(., '{option_text}')]",
-            f"//input[contains(@id, '{option_text.lower().replace(' ', '-')}')]",
             f"//*[normalize-space()='{option_text}']",
         ]
 
         for selector in option_selectors:
-            if await safe_click(self.page, selector, timeout=3000):
-                logger.info(f"Filter option selected: {chip_name} -> {option_text}")
+            if await safe_click(self.page, selector, timeout=2000):
+                logger.info(f"Filter option selected via XPath: {chip_name} -> {option_text}")
                 await async_pause(1, 2)
-
-                # Click 'Show results' or 'Done' to apply
-                apply_selectors = [
-                    "//button[contains(., 'Show results')]",
-                    "//button[contains(., 'Done')]",
-                    "//button[contains(., 'Apply')]",
-                ]
-                for apply_sel in apply_selectors:
-                    if await safe_click(self.page, apply_sel, timeout=2000):
-                        await async_pause(2, 3)
-                        return
+                await self._try_apply_filter_button()
                 return
 
         logger.warning(f"Could not select option '{option_text}' in chip '{chip_name}'")
 
-        # Last resort: try JavaScript click on any visible element containing the text
+        # Strategy 4: JavaScript TreeWalker fallback
         try:
             clicked = await self.page.evaluate(
                 """(text) => {
@@ -506,17 +526,24 @@ class SearchCustomizer(BaseSearchCustomizer):
             if clicked:
                 logger.info(f"JS click succeeded for option '{option_text}'")
                 await async_pause(1, 2)
-                # Try to click Show results
-                for apply_sel in [
-                    "//button[contains(., 'Show results')]",
-                    "//button[contains(., 'Done')]",
-                    "//button[contains(., 'Apply')]",
-                ]:
-                    if await safe_click(self.page, apply_sel, timeout=2000):
-                        await async_pause(2, 3)
-                        return
+                await self._try_apply_filter_button()
         except Exception as e:
             logger.debug(f"JS click fallback failed: {e}")
+
+    async def _try_apply_filter_button(self) -> None:
+        """Try to click Show results / Done / Apply button after selecting a filter option."""
+        # AI search page may auto-apply filters (no button needed)
+        apply_selectors = [
+            "//button[contains(., 'Show results')]",
+            "//button[contains(., 'Done')]",
+            "//button[contains(., 'Apply')]",
+        ]
+        for apply_sel in apply_selectors:
+            if await safe_click(self.page, apply_sel, timeout=1500):
+                await async_pause(2, 3)
+                return
+        # No button found — filter may have been auto-applied
+        logger.debug("No apply button found (filter may be auto-applied)")
 
     async def _open_all_filters(self):
         """Open 'All filters' modal window (async)"""
