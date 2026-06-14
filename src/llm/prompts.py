@@ -449,8 +449,8 @@ Act as an HR expert and resume writer with a specialization in creating ATS-frie
 To implement this:
 - Be concise and to the point, don't write a lot of text.
 - Keep bullet points concise and factual — max 2 lines each. State what you did and the measurable result. Do NOT add tailoring phrases like "demonstrating...", "aligning with...", "shows ability to...", "experience transferable to...", or "key for...".
-- Include at least 3 bullet points for each experience entry, and more if the role had significant responsibilities or achievements.
-- Use as many bullet points as needed to cover all important responsibilities and results — do not artificially limit to 3.
+- Include at least 4 bullet points for each experience entry, and more if the role had significant responsibilities or achievements.
+- Use as many bullet points as needed to cover all important responsibilities and results — do not artificially limit the count.
 - If any of the work experience details (e.g., responsibilities, achievements) are not provided (i.e., None, No info), omit those sections when filling out the template.
 
 
@@ -478,8 +478,8 @@ Act as an HR expert and resume writer with a specialization in creating ATS-frie
 To implement this:
 - Be concise and to the point, don't write a lot of text.
 - Put the projects that are related to auto job applying first.
-- Include at least 3 bullet points for each project, and more if the project had multiple significant features or outcomes.
-- Use as many bullet points as needed to cover all important details — do not artificially limit to 3.
+- Include at least 4 bullet points for each project, and more if the project had multiple significant features or outcomes.
+- Use as many bullet points as needed to cover all important details — do not artificially limit the count.
 - Include ALL projects from the information below - do not skip any.
 - If any of the project details (e.g., link, achievements) are not provided (i.e., None, No info), omit those sections when filling out the template.
 
@@ -546,17 +546,19 @@ To implement this:
 
 prompt_additional_skills = (
     """
-Act as an HR expert and resume writer with a specialization in creating ATS-friendly resumes. Your task is to list additional skills that are most relevant to the target job. For each skill, ensure you include:
+Act as an HR expert and resume writer with a specialization in creating ATS-friendly resumes. Your task is to comprehensively list ALL technical skills, technologies, and competencies from the candidate's profile. Do NOT omit any skill — include every single one listed below. For each skill, ensure you include:
 
-1. Skill Category: Clearly state the category or type of skill.
-2. Specific Skills: List the specific skills or technologies within each category, prioritizing those mentioned in the job description.
-3. Job Alignment: Emphasize skills that directly match the job requirements and use terminology from the job description when appropriate.
+1. Skill Category: Clearly state the category or type of skill (e.g., AI/ML, Languages, Frameworks, Cloud, Databases, Tools, Methodologies, Soft Skills).
+2. Specific Skills: List ALL specific skills and technologies within each category. Do not limit the number of skills per category — include as many as are relevant.
+3. Job Alignment: Emphasize skills that directly match the job requirements. Put the most relevant categories first. Use terminology from the job description when appropriate.
+4. Comprehensiveness: This section must serve as the candidate's complete technical toolkit. If the candidate has 50+ skills across categories, all 50+ must appear.
 
 To implement this:
-- Be concise and to the point, don't write a lot of text.
-- List skill names only — do NOT add parenthetical descriptions, elaborations, or technology details after skill names. For example, write "JavaScript / TypeScript" NOT "JavaScript / TypeScript (ES6+, Node.js)".
-- Ensure that the skills listed are relevant and accurately reflect your expertise in the field.
+- Be concise: list skill names only — do NOT add parenthetical descriptions or elaborations after skill names.
+- Do NOT truncate or limit the number of categories or skills per category. Include ALL of them.
+- Group related skills under bold category headers.
 - If any of the skill details (e.g., languages, interests, skills) are not provided (i.e., None, No info), omit those sections when filling out the template.
+- Tailor category order to the job: put the most relevant categories (matching the job description) at the top.
 
 
 ##My information
