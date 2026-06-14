@@ -304,7 +304,135 @@ class SearchCustomizer(BaseSearchCustomizer):
                 logger.warning("Could not submit AI search query")
                 return False
 
+        # Step 5: Wait for search results to load
+        await self._wait_for_search_results()
         return True
+
+    async def _wait_for_search_results(self, timeout_ms: int = 15000) -> bool:
+        """Wait for job listing cards to appear in the search results."""
+        result_selectors = [
+            "[data-job-id]",
+            ".scaffold-layout__list [data-view-name='job-card']",
+            ".job-card-container",
+            ".jobs-search-results__list-item",
+            "li[data-occludable-job-id]",
+        ]
+        for selector in result_selectors:
+            try:
+                await self.page.wait_for_selector(selector, state="attached", timeout=timeout_ms)
+                logger.info(f"Search results loaded (detected via: {selector})")
+                await async_pause(2, 3)
+                return True
+            except Exception:
+                continue
+        logger.warning("Timed out waiting for search results to appear")
+        return False
+
+    async def _apply_ai_search_filters(self) -> None:
+        """Apply filters using the chip-based filter bar on the AI search results page.
+
+        AI search uses clickable filter chips (Date posted, Easy Apply, Experience level,
+        Remote, etc.) instead of the 'All filters' modal.
+        """
+        logger.info("Applying filters via AI search filter chips")
+
+        # --- Date posted chip ---
+        if self.date_posted:
+            date_label = None
+            for key, enabled in self.date_posted.items():
+                if not enabled:
+                    continue
+                label_map = {
+                    "24_hours": "Past 24 hours",
+                    "day_24_hours": "Past 24 hours",
+                    "week": "Past week",
+                    "month": "Past month",
+                    "all_time": "Any time",
+                }
+                date_label = label_map.get(key)
+                break
+
+            if date_label:
+                await self._click_ai_filter_chip("Date posted", date_label)
+
+        # --- Easy Apply chip ---
+        if EASY_APPLY_ONLY_MODE:
+            await self._click_ai_filter_chip("Easy Apply")
+
+        # --- Experience level chip ---
+        if self.experience_level:
+            ai_exp_map = {
+                "entry": "Entry-level",
+                "mid_senior_level": "Senior",
+                "director": "Director",
+                "executive": "Executive",
+            }
+            for key, enabled in self.experience_level.items():
+                if enabled and key in ai_exp_map:
+                    await self._click_ai_filter_chip("Experience level", ai_exp_map[key])
+
+        # --- Remote chip ---
+        if self.remote:
+            await self._click_ai_filter_chip("Remote")
+
+    async def _click_ai_filter_chip(
+        self, chip_name: str, option_text: str | None = None
+    ) -> None:
+        """Click an AI search filter chip and optionally select a dropdown option.
+
+        For simple toggle chips (Easy Apply, Remote): just click the chip.
+        For chips with dropdowns (Date posted, Experience level): click the chip,
+        then select the matching option from the dropdown.
+        """
+        logger.debug(f"Clicking AI filter chip: {chip_name}")
+
+        chip_selectors = [
+            f"//button[contains(@aria-label, '{chip_name}')]",
+            f"//button[normalize-space()='{chip_name}']",
+            f"//button[contains(., '{chip_name}')]",
+        ]
+
+        chip_clicked = False
+        for selector in chip_selectors:
+            if await safe_click(self.page, selector, timeout=3000):
+                chip_clicked = True
+                await async_pause(1, 2)
+                break
+
+        if not chip_clicked:
+            logger.warning(f"Could not find filter chip: {chip_name}")
+            return
+
+        if not option_text:
+            logger.info(f"Filter chip toggled: {chip_name}")
+            return
+
+        # Select the option from the dropdown that appeared
+        option_selectors = [
+            f"//label[contains(., '{option_text}')]",
+            f"//li[contains(., '{option_text}')]",
+            f"//div[contains(@role, 'option') and contains(., '{option_text}')]",
+            f"//*[contains(@class, 'search-reusables__filter') and contains(., '{option_text}')]",
+        ]
+
+        for selector in option_selectors:
+            if await safe_click(self.page, selector, timeout=3000):
+                logger.info(f"Filter option selected: {chip_name} -> {option_text}")
+                await async_pause(1, 2)
+
+                # Click 'Show results' or 'Done' to apply
+                apply_selectors = [
+                    "//button[contains(., 'Show results')]",
+                    "//button[contains(., 'Done')]",
+                    "//button[contains(., 'Apply')]",
+                ]
+                for apply_sel in apply_selectors:
+                    if await safe_click(self.page, apply_sel, timeout=2000):
+                        await async_pause(2, 3)
+                        return
+                return
+
+        logger.warning(f"Could not select option '{option_text}' in chip '{chip_name}'")
 
     async def _open_all_filters(self):
         """Open 'All filters' modal window (async)"""
@@ -564,14 +692,8 @@ class SearchCustomizer(BaseSearchCustomizer):
                 if ai_success:
                     self._ai_search_active = True
                     logger.info("AI-powered search activated successfully")
-                    # Still apply standard filters on top of AI search results
-                    if await self._open_all_filters():
-                        await self._set_date_posted_filter()
-                        await self._set_experience_level_filter()
-                        await self._set_job_type_filter()
-                        await self._set_easy_apply_filter()
-                        if not await self._apply_filters():
-                            logger.warning("Failed to apply filters after AI search")
+                    # Apply filters via chips (AI search uses chips, not "All filters" modal)
+                    await self._apply_ai_search_filters()
                     logger.info("Search parameters successfully set (AI mode)")
                     return
                 else:
