@@ -243,17 +243,67 @@ class SearchCustomizer(BaseSearchCustomizer):
         # Step 2: Wait for the AI search page to load
         # After clicking "Try AI job search", LinkedIn navigates to the AI search
         # landing page (/jobs/search-results/?origin=SEMANTIC_SEARCH_MODE_FROM_CLASSIC).
-        # The standard keyword search bar is still present and works the same way —
-        # LinkedIn's AI backend processes the query with semantic understanding.
+        # This page has a special search bar with placeholder "Describe the job you want".
         await async_pause(3, 4)
 
-        current_url = self.page.url.lower()
-        if "search-results" in current_url or "semantic_search" in current_url or "jobs/search" in current_url:
-            logger.info("AI search page loaded successfully, proceeding with standard search form")
-            return True
+        # Step 3: Fill the AI search bar with the natural language query
+        nl_query = self.format_ai_search_query()
+        logger.info(f"AI search query: {nl_query}")
 
-        # Check if we're still on the jobs page — AI mode may have been toggled in-place
-        logger.info("AI search activated, proceeding with standard search form")
+        # The AI search bar has different selectors than the classic search
+        ai_input_selectors = [
+            "input[placeholder*='Describe']",
+            "input[placeholder*='describe']",
+            "input[placeholder*='job you want']",
+            "input[placeholder*='Describe the job']",
+            # Fall back to the standard keyword search bar selectors
+            "input[aria-label*='or company']:not([disabled]):not([aria-hidden='true'])",
+            "input[aria-label*='Search by title']:not([disabled]):not([aria-hidden='true'])",
+            "#jobs-search-box-keyword-id-ember:not([disabled])",
+            ".jobs-search-box__input--keyword:not([disabled])",
+            "input[role='combobox'][aria-label*='Search by title']:not([disabled])",
+        ]
+
+        query_filled = False
+        for selector in ai_input_selectors:
+            if await safe_fill(self.page, selector, nl_query, wait_for_timeout=3000):
+                logger.info(f"AI search query filled via selector: {selector}")
+                query_filled = True
+                await async_pause(1, 2)
+                break
+
+        if not query_filled:
+            logger.warning(
+                "Could not fill AI search query input. "
+                "The AI search page may have a different layout than expected."
+            )
+            return False
+
+        # Step 4: Submit the query
+        try:
+            await self.page.keyboard.press("Enter")
+            await async_pause(4, 5)
+            logger.info("AI search query submitted")
+        except Exception as e:
+            logger.warning(f"Failed to submit AI search query via Enter: {e}")
+            # Try clicking the search button as fallback
+            search_button_selectors = [
+                "button.jobs-search-box__submit-button",
+                "button[aria-label='Search']",
+                "button:has-text('Search')",
+                "button.search-search-box__submit",
+            ]
+            clicked = False
+            for selector in search_button_selectors:
+                if await safe_click(self.page, selector, timeout=3000):
+                    logger.info("AI search submitted via search button click")
+                    clicked = True
+                    await async_pause(3, 4)
+                    break
+            if not clicked:
+                logger.warning("Could not submit AI search query")
+                return False
+
         return True
 
     async def _open_all_filters(self):
