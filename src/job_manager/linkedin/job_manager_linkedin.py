@@ -103,6 +103,8 @@ class LinkedInJobManager(BaseJobManager):
                 "div[data-job-id]",
                 ".job-card-job-posting-card-wrapper",
                 "li[data-occludable-job-id]",
+                # AI search page: job cards identified by componentkey attribute
+                "[componentkey*='job-card-component-ref-']",
                 "//*[starts-with(@class, 'flex-grow-1')]",
             ]
 
@@ -120,6 +122,21 @@ class LinkedInJobManager(BaseJobManager):
                         if await self._is_applied_job_card(job_element):
                             logger.info("Skipping already-applied LinkedIn job card")
                             continue
+
+                        # Try to extract job ID from componentkey attribute (AI search page)
+                        componentkey = None
+                        try:
+                            componentkey = await job_element.get_attribute("componentkey")
+                        except Exception:
+                            pass
+                        if componentkey and "job-card-component-ref-" in componentkey:
+                            job_id = componentkey.replace("job-card-component-ref-", "")
+                            job_url = f"https://www.linkedin.com/jobs/view/{job_id}"
+                            if job_id not in seen_job_keys:
+                                seen_job_keys.add(job_id)
+                                selector_vacancies.append({"url": job_url, "id": job_id})
+                            continue
+
                         job_url = await self._extract_job_url(job_element)
                         if job_url:
                             match = re.search(r"/jobs/view/(\d+)", job_url)
@@ -513,6 +530,9 @@ class LinkedInJobManager(BaseJobManager):
                 "ul.scaffold-layout__list-container",
                 "[data-test-job-card-list]",
                 ".job-card-job-posting-card-wrapper",
+                # AI search page: scroll container uses data-testid
+                "[data-testid='lazy-column']",
+                "[data-component-type='LazyColumn']",
             ]
 
             for selector in container_selectors:
