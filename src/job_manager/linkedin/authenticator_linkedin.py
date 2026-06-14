@@ -78,6 +78,11 @@ class LinkedInAuthenticator(BaseAuthenticator):
                 logger.info("LinkedIn already redirected to an authenticated page")
                 return True
 
+            # LinkedIn may show 'We're signing you in' auto-login page — wait for redirect
+            if await self._wait_for_auto_sign_in():
+                logger.info("Auto-signed in via existing session")
+                return await self.check_login_success()
+
             if await self.try_continue_with_saved_account():
                 logger.info("Continued via saved account chooser")
                 return await self.check_login_success()
@@ -182,6 +187,46 @@ class LinkedInAuthenticator(BaseAuthenticator):
                 return False
 
         return False
+
+    async def _wait_for_auto_sign_in(self) -> bool:
+        """Detect LinkedIn's 'We're signing you in' transitional page and wait for redirect.
+
+        LinkedIn sometimes shows an intermediate auto-login page with a progress bar
+        when existing cookies/session are detected.  This page auto-redirects to the
+        feed after a few seconds.  Returns True if the redirect completed successfully.
+        """
+        auto_sign_in_indicators = [
+            "//h1[contains(., 'signing you in')]",
+            "//*[contains(text(), 'signing you in')]",
+            "//*[contains(text(), 'Signing you in')]",
+        ]
+
+        detected = False
+        for selector in auto_sign_in_indicators:
+            try:
+                el = self.page.locator(selector)
+                if await el.count() > 0:
+                    detected = True
+                    break
+            except Exception:
+                continue
+
+        if not detected:
+            return False
+
+        logger.info("LinkedIn auto-sign-in page detected ('We're signing you in'), waiting for redirect...")
+
+        # Wait up to 15 seconds for LinkedIn to redirect away from the login page
+        try:
+            await self.page.wait_for_url(
+                lambda url: "/login" not in url.lower() and "/uas/login" not in url.lower(),
+                timeout=15000,
+            )
+            logger.info(f"Auto-sign-in redirect completed: {self.page.url}")
+            return True
+        except Exception:
+            logger.warning("Auto-sign-in redirect timed out, will try classic login")
+            return False
 
     async def _is_authenticated_page(self) -> bool:
         """Detect authenticated LinkedIn pages using stable URLs and nav markers."""
