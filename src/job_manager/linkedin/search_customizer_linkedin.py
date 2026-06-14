@@ -308,15 +308,25 @@ class SearchCustomizer(BaseSearchCustomizer):
         await self._wait_for_search_results()
         return True
 
-    async def _wait_for_search_results(self, timeout_ms: int = 15000) -> bool:
+    async def _wait_for_search_results(self, timeout_ms: int = 30000) -> bool:
         """Wait for job listing cards to appear in the search results."""
         result_selectors = [
             "[data-job-id]",
+            "li[data-occludable-job-id]",
             ".scaffold-layout__list [data-view-name='job-card']",
             ".job-card-container",
+            ".job-card-job-posting-card-wrapper",
             ".jobs-search-results__list-item",
-            "li[data-occludable-job-id]",
+            ".jobs-search-two-pane__job-card-container",
+            "a[href*='/jobs/view/']",
+            "ul.scaffold-layout__list-container li",
         ]
+        # Scroll down to trigger lazy loading of job cards
+        try:
+            await self.page.evaluate("window.scrollBy(0, 300)")
+        except Exception:
+            pass
+
         for selector in result_selectors:
             try:
                 await self.page.wait_for_selector(selector, state="attached", timeout=timeout_ms)
@@ -325,6 +335,17 @@ class SearchCustomizer(BaseSearchCustomizer):
                 return True
             except Exception:
                 continue
+
+        # Last resort: check if any job-related links exist on the page
+        try:
+            job_links = await self.page.locator("a[href*='/jobs/view/']").count()
+            if job_links > 0:
+                logger.info(f"Search results loaded ({job_links} job links found)")
+                await async_pause(2, 3)
+                return True
+        except Exception:
+            pass
+
         logger.warning("Timed out waiting for search results to appear")
         return False
 
@@ -388,8 +409,15 @@ class SearchCustomizer(BaseSearchCustomizer):
 
         chip_selectors = [
             f"//button[contains(@aria-label, '{chip_name}')]",
-            f"//button[normalize-space()='{chip_name}']",
             f"//button[contains(., '{chip_name}')]",
+            f"//button[normalize-space()='{chip_name}']",
+            f"//*[contains(@class, 'search-reusables__filter-pill') and contains(., '{chip_name}')]",
+            f"//*[contains(@class, 'artdeco-pill') and contains(., '{chip_name}')]",
+            f"//*[contains(@class, 'filter-pill') and contains(., '{chip_name}')]",
+            f"//*[contains(@class, 'chip') and contains(., '{chip_name}')]",
+            f"//*[contains(@role, 'button') and contains(., '{chip_name}')]",
+            f"//span[contains(., '{chip_name}')]/..",
+            f"//*[normalize-space()='{chip_name}']",
         ]
 
         chip_clicked = False
