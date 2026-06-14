@@ -20,6 +20,10 @@ try:
     from config.app_config import LINKEDIN_TOP_APPLICANT_JOBS_MODE
 except ImportError:
     LINKEDIN_TOP_APPLICANT_JOBS_MODE = False
+try:
+    from config.app_config import LINKEDIN_AI_SEARCH_MODE
+except ImportError:
+    LINKEDIN_AI_SEARCH_MODE = False
 from config.logger_config import logger
 
 # Import Playwright utilities for enhanced functionality
@@ -59,7 +63,32 @@ class SearchCustomizer(BaseSearchCustomizer):
         cleaned_positions = [
             position.strip() for position in self.positions if position and position.strip()
         ]
+        if len(cleaned_positions) == 1:
+            return cleaned_positions[0]
         return " OR ".join(f'"{position}"' for position in cleaned_positions)
+
+    def format_ai_search_query(self) -> str:
+        """Format positions and locations as a natural language query for AI search."""
+        positions_text = ", ".join(
+            p.strip() for p in self.positions if p and p.strip()
+        )
+        parts = []
+        if positions_text:
+            parts.append(f"{positions_text} roles")
+        # Add remote/hybrid/onsite preferences
+        work_types = []
+        if self.remote:
+            work_types.append("remote")
+        if self.hybrid:
+            work_types.append("hybrid")
+        if self.onsite:
+            work_types.append("on-site")
+        if work_types:
+            parts.append(f"preferably {', '.join(work_types)}")
+        # Add locations
+        if self.locations:
+            parts.append(f"in {', '.join(self.locations)}")
+        return " ".join(parts) if parts else "AI ML Engineer roles"
 
     async def _set_basic_search_terms(self):
         """Set basic search parameters (keywords and location) - async"""
@@ -167,6 +196,81 @@ class SearchCustomizer(BaseSearchCustomizer):
             await self.page.evaluate("document.activeElement && document.activeElement.blur()")
         except Exception as e:
             logger.debug(f"Failed blurring active location field: {e}")
+
+    async def _activate_ai_search(self) -> bool:
+        """Activate LinkedIn's 'Find jobs with AI' natural language search.
+
+        Clicks the AI search toggle/button on the jobs page, types a natural language
+        query built from positions + locations + work preferences, and submits it.
+
+        Returns True if AI search was activated and submitted successfully.
+        """
+        logger.info("Attempting to activate LinkedIn AI-powered search")
+
+        # Step 1: Click the "Find jobs with AI" button/link
+        ai_button_selectors = [
+            "//button[contains(., 'Find jobs with AI')]",
+            "//span[contains(., 'Find jobs with AI')]/..",
+            "//a[contains(., 'Find jobs with AI')]",
+            "[data-test-ai-search-toggle]",
+            "button[aria-label*='AI']",
+            "//button[contains(@aria-label, 'Find jobs with AI')]",
+            ".jobs-search-box__ai-search-button",
+            "//button[contains(., 'Search with AI')]",
+            "//button[contains(., 'AI search')]",
+        ]
+
+        ai_activated = False
+        for selector in ai_button_selectors:
+            if await safe_click(self.page, selector, timeout=3000):
+                logger.info("AI search button clicked")
+                ai_activated = True
+                await async_pause(2, 3)
+                break
+
+        if not ai_activated:
+            logger.warning(
+                "Could not find 'Find jobs with AI' button. "
+                "This feature may not be available in your region or LinkedIn plan. "
+                "Falling back to classic keyword search."
+            )
+            return False
+
+        # Step 2: Type the natural language query
+        nl_query = self.format_ai_search_query()
+        logger.info(f"AI search query: {nl_query}")
+
+        # After clicking the AI button, the search input should change to accept NL queries
+        ai_input_selectors = [
+            "textarea[aria-label*='search']",
+            "textarea[placeholder*='Describe']",
+            "textarea[placeholder*='AI']",
+            "textarea.jobs-search-box__ai-input",
+            "input[aria-label*='search']:not([disabled])",
+            "textarea:not([disabled])",
+        ]
+
+        query_filled = False
+        for selector in ai_input_selectors:
+            if await safe_fill(self.page, selector, nl_query, wait_for_timeout=3000):
+                logger.info("Natural language query filled successfully")
+                query_filled = True
+                await async_pause(1, 2)
+                break
+
+        if not query_filled:
+            logger.warning("Could not fill AI search query input")
+            return False
+
+        # Step 3: Submit the query
+        try:
+            await self.page.keyboard.press("Enter")
+            await async_pause(3, 4)
+            logger.info("AI search query submitted")
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to submit AI search query: {e}")
+            return False
 
     async def _open_all_filters(self):
         """Open 'All filters' modal window (async)"""
@@ -399,6 +503,27 @@ class SearchCustomizer(BaseSearchCustomizer):
             )
             await async_pause(2, 3)
 
+            # Try AI-powered search if enabled
+            if LINKEDIN_AI_SEARCH_MODE:
+                ai_success = await self._activate_ai_search()
+                if ai_success:
+                    logger.info("AI-powered search activated successfully")
+                    # Still apply standard filters on top of AI search results
+                    if await self._open_all_filters():
+                        await self._set_date_posted_filter()
+                        await self._set_experience_level_filter()
+                        await self._set_job_type_filter()
+                        await self._set_easy_apply_filter()
+                        if not await self._apply_filters():
+                            logger.warning("Failed to apply filters after AI search")
+                    logger.info("Search parameters successfully set (AI mode)")
+                    return
+                else:
+                    logger.warning(
+                        "AI search activation failed, falling back to classic keyword search"
+                    )
+
+            # Classic keyword search flow
             # Set basic search terms (keywords and location)
             await self._set_basic_search_terms()
             await self._commit_basic_search()
