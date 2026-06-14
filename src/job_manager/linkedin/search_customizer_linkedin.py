@@ -308,7 +308,7 @@ class SearchCustomizer(BaseSearchCustomizer):
         await self._wait_for_search_results()
         return True
 
-    async def _wait_for_search_results(self, timeout_ms: int = 30000) -> bool:
+    async def _wait_for_search_results(self, timeout_ms: int = 5000) -> bool:
         """Wait for job listing cards to appear in the search results."""
         result_selectors = [
             "[data-job-id]",
@@ -341,6 +341,16 @@ class SearchCustomizer(BaseSearchCustomizer):
             job_links = await self.page.locator("a[href*='/jobs/view/']").count()
             if job_links > 0:
                 logger.info(f"Search results loaded ({job_links} job links found)")
+                await async_pause(2, 3)
+                return True
+        except Exception:
+            pass
+
+        # Check for any result count text (e.g. "99+ results", "50 results")
+        try:
+            results_text = await self.page.locator("//*[contains(., 'results')]").first.count()
+            if results_text > 0:
+                logger.info("Search results detected via 'results' text on page")
                 await async_pause(2, 3)
                 return True
         except Exception:
