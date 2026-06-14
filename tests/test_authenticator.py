@@ -211,6 +211,9 @@ class TestLinkedInAuthenticatorLogin:
             patch.object(
                 auth, "_is_authenticated_page", new_callable=AsyncMock, return_value=False
             ),
+            patch.object(
+                auth, "_wait_for_auto_sign_in", new_callable=AsyncMock, return_value=False
+            ),
             patch(
                 "src.job_manager.linkedin.authenticator_linkedin.safe_fill", new_callable=AsyncMock
             ) as mock_fill,
