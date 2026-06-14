@@ -89,6 +89,52 @@ class TestParseSalaryFromText:
         result = parse_salary_from_text(None)
         assert result["found"] is False
 
+    # -- New patterns: CTC/stipend/salary keyword with plain number --
+    def test_ctc_plain_number(self):
+        result = parse_salary_from_text("CTC: 3")
+        assert result["found"] is True
+        assert result["min_annual_inr"] == 300000  # 3 LPA
+
+    def test_stipend_keyword(self):
+        result = parse_salary_from_text("Stipend: 15000 per month")
+        assert result["found"] is True
+        # "15000" after "stipend" — raw > 50, treated as raw INR
+        assert result["min_annual_inr"] == 15000
+
+    def test_compensation_keyword(self):
+        result = parse_salary_from_text("Compensation: 8 LPA")
+        assert result["found"] is True
+        assert result["min_annual_inr"] == 800000
+
+    # -- New patterns: plain monthly (no currency symbol) --
+    def test_plain_k_per_month(self):
+        result = parse_salary_from_text("10k per month")
+        assert result["found"] is True
+        assert result["min_annual_inr"] == 120000  # 10000 * 12
+
+    def test_plain_number_monthly(self):
+        result = parse_salary_from_text("25000 per month")
+        assert result["found"] is True
+        assert result["min_annual_inr"] == 300000  # 25000 * 12
+
+    # -- New patterns: INR prefix --
+    def test_inr_prefix(self):
+        result = parse_salary_from_text("INR 600000 per year")
+        assert result["found"] is True
+        assert result["min_annual_inr"] == 600000
+
+    def test_inr_prefix_monthly(self):
+        result = parse_salary_from_text("INR 50000 per month")
+        assert result["found"] is True
+        assert result["min_annual_inr"] == 600000  # 50000 * 12
+
+    # -- Ensure USD still takes priority over plain monthly --
+    def test_usd_not_caught_by_plain_monthly(self):
+        result = parse_salary_from_text("$5,000 per month")
+        assert result["found"] is True
+        assert result["min_annual_usd"] == 60000
+        assert result["min_annual_inr"] is None
+
 
 class TestCheckSalaryThreshold:
     @pytest.fixture

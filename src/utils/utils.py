@@ -445,7 +445,7 @@ def parse_salary_from_text(text: str) -> dict:
         except ValueError:
             return 0
 
-    # Pattern 1: X LPA / X-Y LPA
+    # Pattern 1: X LPA / X-Y LPA / CTC: X LPA
     lpa_match = re.search(
         r"(\d+(?:\.\d+)?)\s*(?:-\s*(\d+(?:\.\d+)?))?\s*LPA",
         text,
@@ -458,6 +458,31 @@ def parse_salary_from_text(text: str) -> dict:
         result["min_annual_inr"] = int(low)
         result["max_annual_inr"] = int(high)
         result["raw_match"] = lpa_match.group(0)
+        return result
+
+    # Pattern 1b: CTC/stipend/salary: X (plain number after CTC keyword, assume LPA)
+    ctc_plain_match = re.search(
+        r"(?:CTC|stipend|salary|compensation)\s*[:\-]?\s*(\d+(?:\.\d+)?)\s*(?:-\s*(\d+(?:\.\d+)?))?\s*(?:lpa|lakhs?|per\s*annum|per\s*year|/\s*year|pa\b|annually)?",
+        text,
+        re.IGNORECASE,
+    )
+    if ctc_plain_match:
+        raw_val = float(ctc_plain_match.group(1))
+        # If value is small (1-50), assume LPA; if large, assume raw INR
+        if raw_val <= 50:
+            low = raw_val * 100000
+        else:
+            low = raw_val
+        high_raw = ctc_plain_match.group(2)
+        if high_raw:
+            high_val = float(high_raw)
+            high = high_val * 100000 if high_val <= 50 else high_val
+        else:
+            high = low
+        result["found"] = True
+        result["min_annual_inr"] = int(low)
+        result["max_annual_inr"] = int(high)
+        result["raw_match"] = ctc_plain_match.group(0)
         return result
 
     # Pattern 2: X lakh(s) per annum / X-Y lakhs
@@ -510,7 +535,7 @@ def parse_salary_from_text(text: str) -> dict:
         result["raw_match"] = inr_annual_match.group(0)
         return result
 
-    # Pattern 5: $ amount per month
+    # Pattern 5: $ amount per month (MUST come before plain monthly to avoid false matches)
     usd_monthly_match = re.search(
         r"\$\s*(\d[\d,]*\.?\d*)\s*(?:k\b)?\s*(?:per\s*month|/\s*month|pm\b|monthly)",
         text,
@@ -550,6 +575,45 @@ def parse_salary_from_text(text: str) -> dict:
         result["min_annual_usd"] = int(low)
         result["max_annual_usd"] = int(high)
         result["raw_match"] = usd_annual_match.group(0)
+        return result
+
+    # Pattern 4b: Xk per month / X k/month / X,000 per month (no currency symbol)
+    # MUST come after USD patterns to avoid matching digits inside '$5,000'
+    plain_monthly_match = re.search(
+        r"(?<!\$)(?<!\u20b9)(\d+(?:\.\d+)?)\s*k?\s*(?:per\s*month|/\s*month|\bpm\b|monthly)",
+        text,
+        re.IGNORECASE,
+    )
+    if plain_monthly_match:
+        raw_num = plain_monthly_match.group(1)
+        num = float(raw_num.replace(",", ""))
+        # If 'k' is in the match, multiply by 1000
+        if "k" in plain_monthly_match.group(0).lower():
+            num *= 1000
+        result["found"] = True
+        result["min_annual_inr"] = int(num * 12)
+        result["max_annual_inr"] = int(num * 12)
+        result["raw_match"] = plain_monthly_match.group(0)
+        return result
+
+    # Pattern 4c: INR X / INR X per month / INR X per year
+    inr_prefix_match = re.search(
+        r"INR\s*(\d[\d,]*\.?\d*)\s*(?:k\b)?\s*(?:per\s*(?:month|annum|year)|/\s*(?:month|annum|year)|pa\b)?",
+        text,
+        re.IGNORECASE,
+    )
+    if inr_prefix_match:
+        raw_num = inr_prefix_match.group(1)
+        num = _parse_number(raw_num)
+        if "k" in inr_prefix_match.group(0).lower():
+            num *= 1000
+        match_text = inr_prefix_match.group(0).lower()
+        if "month" in match_text:
+            num *= 12  # monthly to annual
+        result["found"] = True
+        result["min_annual_inr"] = int(num)
+        result["max_annual_inr"] = int(num)
+        result["raw_match"] = inr_prefix_match.group(0)
         return result
 
     return result
