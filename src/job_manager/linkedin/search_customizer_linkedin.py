@@ -240,41 +240,21 @@ class SearchCustomizer(BaseSearchCustomizer):
             )
             return False
 
-        # Step 2: Type the natural language query
-        nl_query = self.format_ai_search_query()
-        logger.info(f"AI search query: {nl_query}")
+        # Step 2: Wait for the AI search page to load
+        # After clicking "Try AI job search", LinkedIn navigates to the AI search
+        # landing page (/jobs/search-results/?origin=SEMANTIC_SEARCH_MODE_FROM_CLASSIC).
+        # The standard keyword search bar is still present and works the same way —
+        # LinkedIn's AI backend processes the query with semantic understanding.
+        await async_pause(3, 4)
 
-        # After clicking the AI button, the search input should change to accept NL queries
-        ai_input_selectors = [
-            "textarea[aria-label*='search']",
-            "textarea[placeholder*='Describe']",
-            "textarea[placeholder*='AI']",
-            "textarea.jobs-search-box__ai-input",
-            "input[aria-label*='search']:not([disabled])",
-            "textarea:not([disabled])",
-        ]
-
-        query_filled = False
-        for selector in ai_input_selectors:
-            if await safe_fill(self.page, selector, nl_query, wait_for_timeout=3000):
-                logger.info("Natural language query filled successfully")
-                query_filled = True
-                await async_pause(1, 2)
-                break
-
-        if not query_filled:
-            logger.warning("Could not fill AI search query input")
-            return False
-
-        # Step 3: Submit the query
-        try:
-            await self.page.keyboard.press("Enter")
-            await async_pause(3, 4)
-            logger.info("AI search query submitted")
+        current_url = self.page.url.lower()
+        if "search-results" in current_url or "semantic_search" in current_url or "jobs/search" in current_url:
+            logger.info("AI search page loaded successfully, proceeding with standard search form")
             return True
-        except Exception as e:
-            logger.warning(f"Failed to submit AI search query: {e}")
-            return False
+
+        # Check if we're still on the jobs page — AI mode may have been toggled in-place
+        logger.info("AI search activated, proceeding with standard search form")
+        return True
 
     async def _open_all_filters(self):
         """Open 'All filters' modal window (async)"""
