@@ -69,27 +69,20 @@ class SearchCustomizer(BaseSearchCustomizer):
         return " OR ".join(f'"{position}"' for position in cleaned_positions)
 
     def format_ai_search_query(self) -> str:
-        """Format positions and locations as a natural language query for AI search."""
-        positions_text = ", ".join(
-            p.strip() for p in self.positions if p and p.strip()
-        )
+        """Format positions and locations as a query for AI search.
+
+        Uses the same OR-joined format as classic search:
+        '"AI ML Engineer" OR "Machine Learning Engineer" OR ...'
+        with location appended at the end.
+        """
+        keyword_query = self.format_linkedin_keyword_query()
         parts = []
-        if positions_text:
-            parts.append(f"{positions_text} roles")
-        # Add remote/hybrid/onsite preferences
-        work_types = []
-        if self.remote:
-            work_types.append("remote")
-        if self.hybrid:
-            work_types.append("hybrid")
-        if self.onsite:
-            work_types.append("on-site")
-        if work_types:
-            parts.append(f"preferably {', '.join(work_types)}")
+        if keyword_query:
+            parts.append(keyword_query)
         # Add locations
         if self.locations:
             parts.append(f"in {', '.join(self.locations)}")
-        return " ".join(parts) if parts else "AI ML Engineer roles"
+        return " ".join(parts) if parts else "AI ML Engineer"
 
     async def _set_basic_search_terms(self):
         """Set basic search parameters (keywords and location) - async"""
