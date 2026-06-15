@@ -447,89 +447,131 @@ class SearchCustomizer(BaseSearchCustomizer):
         await async_pause(2, 3)
 
         # Step 2: Select the option from the dropdown
-        # DOM: Options are <label class="..." for="«rXX»"></label> with empty innerText
-        # The visible text is rendered by the parent container
+        # DOM: Options are <label class="_1cb9c8b6 ..." for="«rXX»"></label> with EMPTY innerText
+        # The visible text ("Entry-level", "Senior") is rendered as a sibling text node
         option_clicked = False
 
-        # Strategy A: Playwright get_by_text with exact match (pierces shadow DOM)
-        # Try to find the visible rendered option text and click it
+        # Strategy A: JS — find visible text matching the option, then click the
+        # nearest <label> (which has the for= attribute that toggles the checkbox)
         try:
-            option = self.page.get_by_text(option_text, exact=True)
-            count = await option.count()
-            if count > 0:
-                # Click the first visible match
-                for i in range(count):
-                    el = option.nth(i)
-                    try:
-                        if await el.is_visible():
-                            await el.click(force=True, timeout=3000)
-                            option_clicked = True
-                            logger.info(f"Option selected via get_by_text: {option_text}")
-                            break
-                    except Exception:
-                        continue
-        except Exception as e:
-            logger.debug(f"get_by_text failed for '{option_text}': {e}")
+            option_clicked = await self.page.evaluate(
+                """(optionText) => {
+                    // 1. Find the text "Entry-level" anywhere in the visible DOM
+                    const allElements = document.querySelectorAll('*');
+                    let targetContainer = null;
+                    for (const el of allElements) {
+                        // Check direct text nodes (not children's text)
+                        for (const node of el.childNodes) {
+                            if (node.nodeType === Node.TEXT_NODE &&
+                                node.textContent.trim() === optionText) {
+                                targetContainer = el;
+                                break;
+                            }
+                        }
+                        if (targetContainer) break;
+                        // Also check textContent for elements that might wrap the text
+                        if (el.textContent && el.textContent.trim() === optionText &&
+                            el.children.length === 0 && el.offsetParent !== null) {
+                            targetContainer = el;
+                            break;
+                        }
+                    }
 
-        # Strategy B: CSS :text-is() pseudo-class (exact text match, pierces shadow DOM)
-        if not option_clicked:
-            try:
-                option = self.page.locator(f":text-is('{option_text}')")
-                count = await option.count()
-                if count > 0:
-                    await option.first.click(force=True, timeout=3000)
-                    option_clicked = True
-                    logger.info(f"Option selected via :text-is(): {option_text}")
-            except Exception as e:
-                logger.debug(f":text-is() failed for '{option_text}': {e}")
+                    if (!targetContainer) return false;
 
-        # Strategy C: JS - find label whose parent contains the option text
-        if not option_clicked:
-            try:
-                option_clicked = await self.page.evaluate(
-                    """(optionText) => {
-                        const labels = document.querySelectorAll('label');
+                    // 2. From the text container, find the nearest <label> with a for= attribute
+                    // Walk up the DOM tree looking for a label
+                    let current = targetContainer;
+                    for (let i = 0; i < 5; i++) {
+                        // Check siblings for a label
+                        const parent = current.parentElement;
+                        if (!parent) break;
+
+                        const labels = parent.querySelectorAll('label[for]');
                         for (const label of labels) {
-                            const parent = label.parentElement;
-                            if (parent && parent.textContent
-                                && parent.textContent.trim().includes(optionText)) {
+                            // Make sure this label is near our text
+                            if (parent.contains(targetContainer)) {
                                 label.click();
                                 return true;
                             }
                         }
-                        return false;
-                    }""",
-                    option_text,
-                )
-                if option_clicked:
-                    logger.info(f"Option selected via JS parent text: {option_text}")
-            except Exception as e:
-                logger.debug(f"JS parent text click failed: {e}")
 
-        # Strategy D: JS TreeWalker - find any visible element with exact text
+                        // Also check if the container itself has a label sibling
+                        const labelSibling = parent.querySelector('label[for]');
+                        if (labelSibling) {
+                            labelSibling.click();
+                            return true;
+                        }
+
+                        current = parent;
+                    }
+
+                    // 3. Fallback: click the text element itself
+                    targetContainer.click();
+                    return true;
+                }""",
+                option_text,
+            )
+            if option_clicked:
+                logger.info(f"Option selected via JS text+label scan: {option_text}")
+        except Exception as e:
+            logger.debug(f"JS text+label scan failed for '{option_text}': {e}")
+
+        # Strategy B: Playwright get_by_text — might find the sibling text node
         if not option_clicked:
             try:
-                option_clicked = await self.page.evaluate(
-                    """(text) => {
-                        const walker = document.createTreeWalker(
-                            document.body, NodeFilter.SHOW_ELEMENT
-                        );
-                        while (walker.nextNode()) {
-                            const el = walker.currentNode;
-                            if (el.textContent && el.textContent.trim() === text
-                                && el.offsetParent !== null) {
-                                el.click();
+                option = self.page.get_by_text(option_text, exact=True)
+                count = await option.count()
+                if count > 0:
+                    for i in range(count):
+                        el = option.nth(i)
+                        try:
+                            if await el.is_visible():
+                                await el.click(force=True, timeout=3000)
+                                option_clicked = True
+                                logger.info(f"Option selected via get_by_text: {option_text}")
+                                break
+                        except Exception:
+                            continue
+            except Exception as e:
+                logger.debug(f"get_by_text failed for '{option_text}': {e}")
+
+        # Strategy C: JS — find empty labels and click by index order
+        # The option labels all share class "_1cb9c8b6" and are in visual order:
+        # 0=Entry-level, 1=Senior, 2=Manager, 3=Director, 4=Executive
+        if not option_clicked:
+            try:
+                option_index = {
+                    "Entry-level": 0,
+                    "Senior": 1,
+                    "Manager": 2,
+                    "Director": 3,
+                    "Executive": 4,
+                }.get(option_text)
+
+                if option_index is not None:
+                    option_clicked = await self.page.evaluate(
+                        """(index) => {
+                            // Find all empty-text labels (the option label pattern)
+                            const labels = document.querySelectorAll('label[for]');
+                            const emptyLabels = [];
+                            for (const label of labels) {
+                                if (label.textContent.trim() === '' && label.offsetParent !== null) {
+                                    emptyLabels.push(label);
+                                }
+                            }
+                            if (emptyLabels.length > index) {
+                                emptyLabels[index].click();
                                 return true;
                             }
-                        }
-                        return false;
-                    }""",
-                    option_text,
-                )
-                if option_clicked:
-                    logger.info(f"Option selected via JS TreeWalker: {option_text}")
+                            return false;
+                        }""",
+                        option_index,
+                    )
+                    if option_clicked:
+                        logger.info(f"Option selected via index ({option_index}): {option_text}")
             except Exception as e:
-                logger.debug(f"JS TreeWalker fallback failed: {e}")
+                logger.debug(f"Index-based click failed for '{option_text}': {e}")
 
         if not option_clicked:
             logger.warning(f"Could not select option '{option_text}' in chip '{chip_name}'")
