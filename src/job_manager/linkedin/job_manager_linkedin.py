@@ -645,6 +645,7 @@ class LinkedInJobManager(BaseJobManager):
         try:
             job.job_title = await self._extract_job_title()
             job.company_name = await self._extract_company_name()
+            job.location = await self._extract_job_location()
             job.job_description = await self._extract_job_description()
             job.company_description = await self._extract_company_description()
             # job.recruiter_link = await self._get_job_recruiter()
@@ -695,6 +696,77 @@ class LinkedInJobManager(BaseJobManager):
                 continue
 
         logger.debug("Could not extract company name from job page")
+        return None
+
+    async def _extract_job_location(self) -> str:
+        """Extract job location from the job page using multiple selector strategies (async)"""
+        # Strategy 1: LinkedIn job detail page — location is near the company name
+        location_selectors = [
+            # AI search results page: location in job card metadata
+            "//span[contains(@class, 'job-card') or contains(@class, 'job-detail')]//p[contains(text(), ',') or contains(text(), 'Remote') or contains(text(), 'Hybrid') or contains(text(), 'On-site')]",
+            # Job detail page: location after company name
+            "//div[contains(@class, 'job-details')]//span[contains(text(), ',')]",
+            # Common LinkedIn job location patterns
+            "//span[contains(@class, 'bullet')]/following-sibling::span[1]",
+            # "City, State (Remote/Hybrid/On-site)" pattern
+            "//p[contains(text(), 'Remote') or contains(text(), 'Hybrid') or contains(text(), 'On-site') or contains(text(), 'Onsite')]",
+            # Location from "Set alert for similar jobs" section
+            "//h2[contains(text(), 'Set alert for similar jobs')]/following-sibling::div[1]//p[contains(text(), ',')]",
+            # Job search result card location
+            "//span[contains(@class, 'job-result-card__location')]",
+            "//span[contains(@class, 'job-search-card__location')]",
+        ]
+
+        for selector in location_selectors:
+            elements = await find_elements_safely(self.page, selector, "xpath")
+            for element in elements:
+                try:
+                    text = await get_clean_text(element)
+                    if text and len(text) > 2 and len(text) < 100:
+                        text = text.strip()
+                        # Filter out non-location text
+                        if any(kw in text.lower() for kw in [
+                            "remote", "hybrid", "on-site", "onsite",
+                            "india", "usa", "united", "city", "state",
+                            # Common Indian cities
+                            "hyderabad", "mumbai", "delhi", "bangalore", "bengaluru",
+                            "pune", "chennai", "kolkata", "gurugram", "gurgaon",
+                            "noida", "ahmedabad", "jaipur", "chandigarh",
+                        ]) or "," in text:
+                            logger.debug(f"Found job location '{text}' using selector: {selector}")
+                            return text
+                except Exception:
+                    continue
+
+        # Strategy 2: Look for location text in the page using JavaScript
+        try:
+            location = await self.page.evaluate(
+                """() => {
+                    // Look for location patterns in the job detail area
+                    const allSpans = document.querySelectorAll('span, p');
+                    for (const el of allSpans) {
+                        const text = el.textContent.trim();
+                        // Match "City, State" or "City (Remote/Hybrid)" patterns
+                        if (text.length > 3 && text.length < 80 &&
+                            (text.includes('Remote') || text.includes('Hybrid') ||
+                             text.includes('On-site') || text.includes('Onsite'))) {
+                            // Make sure it's in the job area, not a filter chip
+                            const parent = el.closest('[class*="job"], [class*="detail"], [class*="card"]');
+                            if (parent || el.closest('main')) {
+                                return text;
+                            }
+                        }
+                    }
+                    return null;
+                }"""
+            )
+            if location:
+                logger.debug(f"Found job location via JS: '{location}'")
+                return location
+        except Exception:
+            pass
+
+        logger.debug("Could not extract job location from job page")
         return None
 
     async def _extract_job_title(self) -> str:
