@@ -97,20 +97,18 @@ class ResumeAnonymizer:
             dummy_pesonal_info = DUMMY_PERSONAL_INFO_MALE
         for key, value_to_replace in dummy_pesonal_info.items():
             if key == "github":
-                for i, github_link in enumerate(self.github_links):
+                for github_link in self.github_links:
                     output_text = re.sub(
                         r"(?:https?://)?(?:www\.)?github\.com/[^\"'>^\s/]+",
                         github_link,
                         output_text,
-                        count=i + 1,
                     )
             elif key == "linkedin":
-                for i, linkedin_link in enumerate(self.linkedin_links):
+                for linkedin_link in self.linkedin_links:
                     output_text = re.sub(
                         r"(?:https?://)?(?:www\.)?linkedin\.com/in/[^\"'>^\s/]+",
                         linkedin_link,
                         output_text,
-                        count=i + 1,
                     )
             else:
                 if "github" in value_to_replace or "linkedin" in value_to_replace:
@@ -129,6 +127,17 @@ class ResumeAnonymizer:
                     output_text = re.sub(rf"{value_to_replace_escaped}", value, output_text)
                 else:
                     output_text = re.sub(rf"\b{value_to_replace_escaped}\b", value, output_text)
+
+        # Final fallback: replace any remaining dummy values with originals
+        # Catches cases where the LLM generated slightly different URL formats
+        # that the regex above didn't match
+        for key, dummy_value in dummy_pesonal_info.items():
+            original = self.personal_information.get(key)
+            if not original or not dummy_value:
+                continue
+            if dummy_value in output_text and dummy_value != original:
+                output_text = output_text.replace(dummy_value, original)
+
         return output_text
 
 
