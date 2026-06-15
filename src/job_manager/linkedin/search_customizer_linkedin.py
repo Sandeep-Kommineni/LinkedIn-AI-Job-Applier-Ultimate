@@ -447,75 +447,42 @@ class SearchCustomizer(BaseSearchCustomizer):
         await async_pause(2, 3)
 
         # Step 2: Select the option from the dropdown
-        # DOM: Options are <label class="_1cb9c8b6 ..." for="«rXX»"></label> with EMPTY innerText
-        # The visible text ("Entry-level", "Senior") is rendered as a sibling text node
+        # DOM: The visible text is inside <p class="_0d982122 ...">Entry-level</p>
+        # The checkbox <label class="_1cb9c8b6 ..." for="rXX"></label> is a sibling
         option_clicked = False
 
-        # Strategy A: JS — find visible text matching the option, then click the
-        # nearest <label> (which has the for= attribute that toggles the checkbox)
+        # Strategy A: JS — find <p> with exact text, then click sibling <label>
         try:
             option_clicked = await self.page.evaluate(
                 """(optionText) => {
-                    // 1. Find the text "Entry-level" anywhere in the visible DOM
-                    const allElements = document.querySelectorAll('*');
-                    let targetContainer = null;
-                    for (const el of allElements) {
-                        // Check direct text nodes (not children's text)
-                        for (const node of el.childNodes) {
-                            if (node.nodeType === Node.TEXT_NODE &&
-                                node.textContent.trim() === optionText) {
-                                targetContainer = el;
-                                break;
-                            }
-                        }
-                        if (targetContainer) break;
-                        // Also check textContent for elements that might wrap the text
-                        if (el.textContent && el.textContent.trim() === optionText &&
-                            el.children.length === 0 && el.offsetParent !== null) {
-                            targetContainer = el;
-                            break;
-                        }
-                    }
+                    // Find <p> elements with exact text match
+                    const paragraphs = document.querySelectorAll('p');
+                    for (const p of paragraphs) {
+                        if (p.textContent.trim() !== optionText) continue;
+                        if (p.offsetParent === null) continue; // skip hidden
 
-                    if (!targetContainer) return false;
-
-                    // 2. From the text container, find the nearest <label> with a for= attribute
-                    // Walk up the DOM tree looking for a label
-                    let current = targetContainer;
-                    for (let i = 0; i < 5; i++) {
-                        // Check siblings for a label
-                        const parent = current.parentElement;
-                        if (!parent) break;
+                        // Look for sibling <label for="..."> to click
+                        const parent = p.parentElement;
+                        if (!parent) continue;
 
                         const labels = parent.querySelectorAll('label[for]');
                         for (const label of labels) {
-                            // Make sure this label is near our text
-                            if (parent.contains(targetContainer)) {
-                                label.click();
-                                return true;
-                            }
-                        }
-
-                        // Also check if the container itself has a label sibling
-                        const labelSibling = parent.querySelector('label[for]');
-                        if (labelSibling) {
-                            labelSibling.click();
+                            label.click();
                             return true;
                         }
 
-                        current = parent;
+                        // No label sibling found — click the <p> itself
+                        p.click();
+                        return true;
                     }
-
-                    // 3. Fallback: click the text element itself
-                    targetContainer.click();
-                    return true;
+                    return false;
                 }""",
                 option_text,
             )
             if option_clicked:
-                logger.info(f"Option selected via JS text+label scan: {option_text}")
+                logger.info(f"Option selected via JS p+label scan: {option_text}")
         except Exception as e:
-            logger.debug(f"JS text+label scan failed for '{option_text}': {e}")
+            logger.debug(f"JS p+label scan failed for '{option_text}': {e}")
 
         # Strategy B: Playwright get_by_text — might find the sibling text node
         if not option_clicked:
