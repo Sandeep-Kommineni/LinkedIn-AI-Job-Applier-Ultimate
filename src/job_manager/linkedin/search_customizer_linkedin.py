@@ -378,10 +378,14 @@ class SearchCustomizer(BaseSearchCustomizer):
 
             if date_label:
                 await self._click_ai_filter_chip("Date posted", date_label)
+                # Wait for results to reload after applying date filter
+                await async_pause(3, 4)
 
         # --- Easy Apply chip ---
         if EASY_APPLY_ONLY_MODE:
             await self._click_ai_filter_chip("Easy Apply")
+            # Easy Apply toggle may trigger a page reload — wait for stability
+            await async_pause(4, 5)
 
         # --- Experience level chip ---
         if self.experience_level:
@@ -410,20 +414,54 @@ class SearchCustomizer(BaseSearchCustomizer):
         """
         logger.debug(f"Clicking AI filter chip: {chip_name}")
         
+        # Wait for page to be stable before interacting with filter chips
+        await async_pause(2, 3)
+        
         # Step 1: Click the filter chip <label> by its visible text
         # DOM: <label class="_1e22b14f ..." for="«rXX»">Chip Name<svg>...</svg></label>
         chip_clicked = False
         try:
-            chip = self.page.get_by_text(chip_name, exact=True)
+            # Use exact=False because label contains text + SVG caret
+            chip = self.page.get_by_text(chip_name, exact=False)
             if await chip.count() > 0:
-                await chip.first.click(force=True, timeout=3000)
-                chip_clicked = True
-                logger.info(f"Clicked filter chip via get_by_text: {chip_name}")
+                # Find the right one — avoid matching option text inside dropdowns
+                for i in range(await chip.count()):
+                    el = chip.nth(i)
+                    try:
+                        if await el.is_visible():
+                            await el.click(force=True, timeout=3000)
+                            chip_clicked = True
+                            logger.info(f"Clicked filter chip via get_by_text: {chip_name}")
+                            break
+                    except Exception:
+                        continue
         except Exception as e:
             logger.debug(f"get_by_text failed for chip '{chip_name}': {e}")
         
+        # Strategy B: JS — find <label> whose textContent starts with the chip name
         if not chip_clicked:
-            # Fallback: XPath targeting <label> containing the text
+            try:
+                chip_clicked = await self.page.evaluate(
+                    """(chipName) => {
+                        const labels = document.querySelectorAll('label');
+                        for (const label of labels) {
+                            const text = label.textContent.trim();
+                            if (text.startsWith(chipName) && label.offsetParent !== null) {
+                                label.click();
+                                return true;
+                            }
+                        }
+                        return false;
+                    }""",
+                    chip_name,
+                )
+                if chip_clicked:
+                    logger.info(f"Clicked filter chip via JS label scan: {chip_name}")
+            except Exception as e:
+                logger.debug(f"JS label scan failed for chip '{chip_name}': {e}")
+        
+        if not chip_clicked:
+            # Fallback: XPath targeting elements containing the text
             chip_selectors = [
                 f"//label[contains(., '{chip_name}')]",
                 f"//*[normalize-space()='{chip_name}']",
@@ -432,7 +470,7 @@ class SearchCustomizer(BaseSearchCustomizer):
             for selector in chip_selectors:
                 if await safe_click(self.page, selector, timeout=3000):
                     chip_clicked = True
-                    await async_pause(1, 2)
+                    logger.info(f"Clicked filter chip via XPath: {chip_name}")
                     break
         
         if not chip_clicked:
