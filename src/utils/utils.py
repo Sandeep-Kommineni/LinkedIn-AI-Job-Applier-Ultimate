@@ -398,7 +398,58 @@ def clean_structured_resume(structured_resume: Dict[str, Any]) -> Dict[str, Any]
     return cleaned_resume if cleaned_resume is not None else {}
 
 
-def parse_salary_from_text(text: str) -> dict:
+# Location keywords to currency mapping for salary inference
+_LOCATION_CURRENCY_MAP = {
+    # INR locations
+    "india": "INR", "hyderabad": "INR", "bengaluru": "INR", "bangalore": "INR",
+    "mumbai": "INR", "pune": "INR", "chennai": "INR", "delhi": "INR",
+    "gurugram": "INR", "gurgaon": "INR", "noida": "INR", "kolkata": "INR",
+    "ahmedabad": "INR", "jaipur": "INR", "chandigarh": "INR",
+    "telangana": "INR", "karnataka": "INR", "maharashtra": "INR",
+    "tamil nadu": "INR", "tamilnadu": "INR", "gandhinagar": "INR",
+    # USD locations
+    "united states": "USD", "usa": "USD", "us": "USD",
+    "new york": "USD", "san francisco": "USD", "seattle": "USD",
+    "austin": "USD", "boston": "USD", "chicago": "USD",
+    "los angeles": "USD", "denver": "USD", "atlanta": "USD",
+    "washington": "USD", "california": "USD", "texas": "USD",
+    # GBP locations
+    "united kingdom": "GBP", "uk": "GBP", "london": "GBP",
+    "manchester": "GBP", "edinburgh": "GBP", "birmingham": "GBP",
+    # EUR locations
+    "germany": "EUR", "berlin": "EUR", "munich": "EUR",
+    "france": "EUR", "paris": "EUR", "netherlands": "EUR",
+    "amsterdam": "EUR", "ireland": "EUR", "dublin": "EUR",
+    # CAD locations
+    "canada": "CAD", "toronto": "CAD", "vancouver": "CAD", "montreal": "CAD",
+    # AUD locations
+    "australia": "AUD", "sydney": "AUD", "melbourne": "AUD",
+}
+
+# Approximate conversion rates to USD for non-INR/USD currencies
+_CURRENCY_TO_USD = {
+    "GBP": 1.27,
+    "EUR": 1.08,
+    "CAD": 0.73,
+    "AUD": 0.65,
+}
+
+# Approximate INR to USD rate
+_INR_TO_USD = 1 / 83  # ~83 INR per USD
+
+
+def _infer_currency_from_location(job_location: str) -> str | None:
+    """Infer currency from job location string."""
+    if not job_location:
+        return None
+    loc_lower = job_location.lower()
+    for keyword, currency in _LOCATION_CURRENCY_MAP.items():
+        if keyword in loc_lower:
+            return currency
+    return None
+
+
+def parse_salary_from_text(text: str, job_location: str = "") -> dict:
     """Parse salary information from job description text.
 
     Detects common salary formats in both INR and USD:
@@ -424,11 +475,18 @@ def parse_salary_from_text(text: str) -> dict:
         "max_annual_inr": None,
         "min_annual_usd": None,
         "max_annual_usd": None,
+        "min_annual_other_usd": None,
+        "max_annual_other_usd": None,
         "raw_match": "",
+        "inferred_currency": None,
     }
 
     if not text:
         return result
+
+    # Infer currency from job location for ambiguous patterns
+    inferred_currency = _infer_currency_from_location(job_location)
+    result["inferred_currency"] = inferred_currency
 
     def _parse_number(s: str) -> float:
         """Parse a number string that may contain commas, k/K, or lakh/L."""
@@ -460,7 +518,8 @@ def parse_salary_from_text(text: str) -> dict:
         result["raw_match"] = lpa_match.group(0)
         return result
 
-    # Pattern 1b: CTC/stipend/salary: X (plain number after CTC keyword, assume LPA)
+    # Pattern 1b: CTC/stipend/salary: X (plain number after CTC keyword)
+    # Uses location to infer currency when not explicitly stated
     ctc_plain_match = re.search(
         r"(?:CTC|stipend|salary|compensation)\s*[:\-]?\s*(\d+(?:\.\d+)?)\s*(?:-\s*(\d+(?:\.\d+)?))?\s*(?:lpa|lakhs?|per\s*annum|per\s*year|/\s*year|pa\b|annually)?",
         text,
@@ -468,20 +527,43 @@ def parse_salary_from_text(text: str) -> dict:
     )
     if ctc_plain_match:
         raw_val = float(ctc_plain_match.group(1))
-        # If value is small (1-50), assume LPA; if large, assume raw INR
-        if raw_val <= 50:
-            low = raw_val * 100000
-        else:
-            low = raw_val
         high_raw = ctc_plain_match.group(2)
-        if high_raw:
-            high_val = float(high_raw)
-            high = high_val * 100000 if high_val <= 50 else high_val
+
+        if inferred_currency in ("USD", "GBP", "EUR", "CAD", "AUD"):
+            # Non-INR location: treat small values as thousands, large as raw
+            if raw_val <= 200:
+                low = raw_val * 1000  # e.g. "salary: 60" -> $60,000
+            else:
+                low = raw_val
+            if high_raw:
+                high_val = float(high_raw)
+                high = high_val * 1000 if high_val <= 200 else high_val
+            else:
+                high = low
+            if inferred_currency == "USD":
+                result["found"] = True
+                result["min_annual_usd"] = int(low)
+                result["max_annual_usd"] = int(high)
+            else:
+                # Convert to USD equivalent
+                rate = _CURRENCY_TO_USD.get(inferred_currency, 1.0)
+                result["found"] = True
+                result["min_annual_other_usd"] = int(low * rate)
+                result["max_annual_other_usd"] = int(high * rate)
         else:
-            high = low
-        result["found"] = True
-        result["min_annual_inr"] = int(low)
-        result["max_annual_inr"] = int(high)
+            # INR location or unknown: treat small values as LPA, large as raw INR
+            if raw_val <= 50:
+                low = raw_val * 100000
+            else:
+                low = raw_val
+            if high_raw:
+                high_val = float(high_raw)
+                high = high_val * 100000 if high_val <= 50 else high_val
+            else:
+                high = low
+            result["found"] = True
+            result["min_annual_inr"] = int(low)
+            result["max_annual_inr"] = int(high)
         result["raw_match"] = ctc_plain_match.group(0)
         return result
 
@@ -579,6 +661,7 @@ def parse_salary_from_text(text: str) -> dict:
 
     # Pattern 4b: Xk per month / X k/month / X,000 per month (no currency symbol)
     # MUST come after USD patterns to avoid matching digits inside '$5,000'
+    # Uses location to infer currency
     plain_monthly_match = re.search(
         r"(?<!\$)(?<!\u20b9)(\d+(?:\.\d+)?)\s*k?\s*(?:per\s*month|/\s*month|\bpm\b|monthly)",
         text,
@@ -590,9 +673,25 @@ def parse_salary_from_text(text: str) -> dict:
         # If 'k' is in the match, multiply by 1000
         if "k" in plain_monthly_match.group(0).lower():
             num *= 1000
-        result["found"] = True
-        result["min_annual_inr"] = int(num * 12)
-        result["max_annual_inr"] = int(num * 12)
+
+        annual = num * 12  # monthly to annual
+
+        if inferred_currency in ("USD", "GBP", "EUR", "CAD", "AUD"):
+            # Non-INR location
+            if inferred_currency == "USD":
+                result["found"] = True
+                result["min_annual_usd"] = int(annual)
+                result["max_annual_usd"] = int(annual)
+            else:
+                rate = _CURRENCY_TO_USD.get(inferred_currency, 1.0)
+                result["found"] = True
+                result["min_annual_other_usd"] = int(annual * rate)
+                result["max_annual_other_usd"] = int(annual * rate)
+        else:
+            # INR location or unknown
+            result["found"] = True
+            result["min_annual_inr"] = int(annual)
+            result["max_annual_inr"] = int(annual)
         result["raw_match"] = plain_monthly_match.group(0)
         return result
 
@@ -622,22 +721,29 @@ def parse_salary_from_text(text: str) -> dict:
 def check_salary_threshold(
     job_description: str,
     salary_filter_config: dict,
+    job_location: str = "",
 ) -> tuple[bool, str]:
     """Check if a job's salary meets the configured minimum threshold.
 
     Args:
         job_description: The full job description text.
         salary_filter_config: Dict from SalaryFilter.model_dump().
+        job_location: The job's location string for currency inference.
 
     Returns:
         (should_skip, reason) tuple:
           - (False, "") if no salary found or salary meets threshold
           - (True, reason) if salary is explicitly below minimum
+
+    Currency inference when not explicitly stated:
+      - Job in India/Bengaluru/etc. -> INR thresholds
+      - Job in US/New York/etc. -> USD thresholds
+      - GBP/EUR/CAD/AUD -> converted to USD for comparison
     """
     if not salary_filter_config.get("enabled", False):
         return False, ""
 
-    parsed = parse_salary_from_text(job_description)
+    parsed = parse_salary_from_text(job_description, job_location)
     if not parsed["found"]:
         return False, ""
 
@@ -661,6 +767,16 @@ def check_salary_threshold(
         if detected_max < min_usd:
             return True, (
                 f"Salary {parsed['raw_match']} (${detected_min:,}-${detected_max:,}/year) "
+                f"is below minimum threshold (${min_usd:,}/year)"
+            )
+
+    # Check other currencies (GBP, EUR, CAD, AUD) — convert to USD and compare
+    if parsed.get("min_annual_other_usd") is not None:
+        detected_min = parsed["min_annual_other_usd"]
+        detected_max = parsed.get("max_annual_other_usd") or detected_min
+        if detected_max < min_usd:
+            return True, (
+                f"Salary {parsed['raw_match']} (~${detected_min:,}-~${detected_max:,} USD equiv/year) "
                 f"is below minimum threshold (${min_usd:,}/year)"
             )
 

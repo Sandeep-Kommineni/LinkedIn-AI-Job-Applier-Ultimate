@@ -358,7 +358,7 @@ class LinkedInJobManager(BaseJobManager):
             salary_filter_config = self.search_component.salary_filter or {}
             if salary_filter_config:
                 salary_skip, salary_reason = check_salary_threshold(
-                    job.job_description, salary_filter_config
+                    job.job_description, salary_filter_config, job.location
                 )
                 if salary_skip:
                     apply_result = "Skip", salary_reason

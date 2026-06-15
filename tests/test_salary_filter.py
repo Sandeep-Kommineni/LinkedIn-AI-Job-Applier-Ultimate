@@ -135,6 +135,45 @@ class TestParseSalaryFromText:
         assert result["min_annual_usd"] == 60000
         assert result["min_annual_inr"] is None
 
+    # -- Location-based currency inference --
+    def test_ctc_india_location_infers_inr(self):
+        result = parse_salary_from_text("CTC: 5", job_location="Bengaluru, India")
+        assert result["found"] is True
+        assert result["min_annual_inr"] == 500000  # 5 LPA
+        assert result["inferred_currency"] == "INR"
+
+    def test_ctc_us_location_infers_usd(self):
+        result = parse_salary_from_text("salary: 60", job_location="San Francisco, US")
+        assert result["found"] is True
+        assert result["min_annual_usd"] == 60000  # 60 * 1000
+        assert result["inferred_currency"] == "USD"
+
+    def test_plain_monthly_india_location(self):
+        result = parse_salary_from_text("50000 per month", job_location="Hyderabad, India")
+        assert result["found"] is True
+        assert result["min_annual_inr"] == 600000  # 50000 * 12
+        assert result["min_annual_usd"] is None
+
+    def test_plain_monthly_us_location(self):
+        result = parse_salary_from_text("5000 per month", job_location="New York, US")
+        assert result["found"] is True
+        assert result["min_annual_usd"] == 60000  # 5000 * 12
+        assert result["min_annual_inr"] is None
+
+    def test_london_location_infers_gbp(self):
+        result = parse_salary_from_text("salary: 50", job_location="London, UK")
+        assert result["found"] is True
+        assert result["inferred_currency"] == "GBP"
+        # 50 * 1000 = 50000 GBP * 1.27 USD/GBP = 63500 USD equiv
+        assert result["min_annual_other_usd"] == 63500
+
+    def test_explicit_currency_overrides_location(self):
+        # $ symbol always wins even if location is India
+        result = parse_salary_from_text("$60,000 per year", job_location="Bengaluru, India")
+        assert result["found"] is True
+        assert result["min_annual_usd"] == 60000
+        assert result["min_annual_inr"] is None
+
 
 class TestCheckSalaryThreshold:
     @pytest.fixture
