@@ -700,21 +700,57 @@ class LinkedInJobManager(BaseJobManager):
 
     async def _extract_job_location(self) -> str:
         """Extract job location from the job page using multiple selector strategies (async)"""
-        # Strategy 1: LinkedIn job detail page — location is near the company name
+        # Strategy 1: Look for location span near company name in AI search results
+        # The location <span> is a sibling of the company name <p> in the same parent
+        try:
+            location = await self.page.evaluate(
+                """() => {
+                    // Find all company name elements, then check their siblings for location
+                    const companyElements = document.querySelectorAll('p, span');
+                    for (const el of companyElements) {
+                        const text = el.textContent.trim();
+                        // Company names are typically short text without location keywords
+                        if (text.length > 2 && text.length < 60) {
+                            const parent = el.parentElement;
+                            if (!parent) continue;
+                            // Look for sibling spans that look like locations
+                            const siblings = parent.querySelectorAll('span, p');
+                            for (const sib of siblings) {
+                                if (sib === el) continue;
+                                const sibText = sib.textContent.trim();
+                                if (sibText.length > 1 && sibText.length < 80 && sibText !== text) {
+                                    // Check if it looks like a location
+                                    const locKeywords = [
+                                        'remote', 'hybrid', 'on-site', 'onsite',
+                                        'india', 'usa', 'united', 'uk', 'germany',
+                                        'hyderabad', 'mumbai', 'delhi', 'bangalore', 'bengaluru',
+                                        'pune', 'chennai', 'kolkata', 'gurugram', 'gurgaon',
+                                        'noida', 'ahmedabad', 'jaipur', 'chandigarh',
+                                        'new york', 'san francisco', 'seattle', 'london',
+                                        'toronto', 'sydney', 'berlin', 'paris', 'dublin',
+                                        'telangana', 'karnataka', 'maharashtra', 'tamil',
+                                    ];
+                                    if (locKeywords.some(kw => sibText.toLowerCase().includes(kw))) {
+                                        return sibText;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    return null;
+                }"""
+            )
+            if location:
+                logger.debug(f"Found job location via sibling scan: '{location}'")
+                return location
+        except Exception as e:
+            logger.debug(f"Sibling location scan failed: {e}")
+
+        # Strategy 2: XPath selectors for common LinkedIn location patterns
         location_selectors = [
-            # AI search results page: location in job card metadata
-            "//span[contains(@class, 'job-card') or contains(@class, 'job-detail')]//p[contains(text(), ',') or contains(text(), 'Remote') or contains(text(), 'Hybrid') or contains(text(), 'On-site')]",
-            # Job detail page: location after company name
-            "//div[contains(@class, 'job-details')]//span[contains(text(), ',')]",
-            # Common LinkedIn job location patterns
-            "//span[contains(@class, 'bullet')]/following-sibling::span[1]",
-            # "City, State (Remote/Hybrid/On-site)" pattern
-            "//p[contains(text(), 'Remote') or contains(text(), 'Hybrid') or contains(text(), 'On-site') or contains(text(), 'Onsite')]",
-            # Location from "Set alert for similar jobs" section
-            "//h2[contains(text(), 'Set alert for similar jobs')]/following-sibling::div[1]//p[contains(text(), ',')]",
-            # Job search result card location
             "//span[contains(@class, 'job-result-card__location')]",
             "//span[contains(@class, 'job-search-card__location')]",
+            "//p[contains(text(), 'Remote') or contains(text(), 'Hybrid') or contains(text(), 'On-site') or contains(text(), 'Onsite')]",
         ]
 
         for selector in location_selectors:
@@ -722,37 +758,33 @@ class LinkedInJobManager(BaseJobManager):
             for element in elements:
                 try:
                     text = await get_clean_text(element)
-                    if text and len(text) > 2 and len(text) < 100:
-                        text = text.strip()
-                        # Filter out non-location text
-                        if any(kw in text.lower() for kw in [
-                            "remote", "hybrid", "on-site", "onsite",
-                            "india", "usa", "united", "city", "state",
-                            # Common Indian cities
-                            "hyderabad", "mumbai", "delhi", "bangalore", "bengaluru",
-                            "pune", "chennai", "kolkata", "gurugram", "gurgaon",
-                            "noida", "ahmedabad", "jaipur", "chandigarh",
-                        ]) or "," in text:
-                            logger.debug(f"Found job location '{text}' using selector: {selector}")
-                            return text
+                    if text and 2 < len(text) < 100:
+                        logger.debug(f"Found job location '{text}' using selector: {selector}")
+                        return text.strip()
                 except Exception:
                     continue
 
-        # Strategy 2: Look for location text in the page using JavaScript
+        # Strategy 3: JavaScript fallback — scan all spans/ps for location text
         try:
             location = await self.page.evaluate(
                 """() => {
-                    // Look for location patterns in the job detail area
-                    const allSpans = document.querySelectorAll('span, p');
-                    for (const el of allSpans) {
+                    const locKeywords = [
+                        'remote', 'hybrid', 'on-site', 'onsite',
+                        'india', 'usa', 'united', 'uk', 'germany',
+                        'hyderabad', 'mumbai', 'delhi', 'bangalore', 'bengaluru',
+                        'pune', 'chennai', 'kolkata', 'gurugram', 'gurgaon',
+                        'noida', 'ahmedabad', 'jaipur', 'chandigarh',
+                        'new york', 'san francisco', 'seattle', 'london',
+                        'toronto', 'sydney', 'berlin', 'paris', 'dublin',
+                    ];
+                    const elements = document.querySelectorAll('span, p');
+                    for (const el of elements) {
                         const text = el.textContent.trim();
-                        // Match "City, State" or "City (Remote/Hybrid)" patterns
-                        if (text.length > 3 && text.length < 80 &&
-                            (text.includes('Remote') || text.includes('Hybrid') ||
-                             text.includes('On-site') || text.includes('Onsite'))) {
-                            // Make sure it's in the job area, not a filter chip
-                            const parent = el.closest('[class*="job"], [class*="detail"], [class*="card"]');
-                            if (parent || el.closest('main')) {
+                        if (text.length > 2 && text.length < 60 &&
+                            locKeywords.some(kw => text.toLowerCase().includes(kw))) {
+                            // Make sure it's in the job content area, not nav/filter
+                            if (el.closest('main') || el.closest('[class*="job"]') ||
+                                el.closest('[class*="detail"]') || el.closest('[class*="card"]')) {
                                 return text;
                             }
                         }
@@ -761,7 +793,7 @@ class LinkedInJobManager(BaseJobManager):
                 }"""
             )
             if location:
-                logger.debug(f"Found job location via JS: '{location}'")
+                logger.debug(f"Found job location via JS scan: '{location}'")
                 return location
         except Exception:
             pass
