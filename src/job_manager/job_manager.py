@@ -212,6 +212,10 @@ class BaseJobManager(ABC):
             )
             if not data:
                 return {}
+            # Safety: ensure dict format (file may have been cleared to a list)
+            if not isinstance(data, dict):
+                logger.warning(f"{filename} has unexpected type {type(data).__name__}, resetting to dict")
+                return {}
             return data
         except FileNotFoundError:
             logger.warning(f"File {filename} not found, returning empty dict")
@@ -296,6 +300,10 @@ class BaseJobManager(ABC):
                     raise ValueError(
                         f"The format of the file {filename} is incorrect, we expect a list"
                     )
+                # Safety: skill_stat.yaml must be a dict
+                if filename == "skill_stat.yaml" and not isinstance(data, dict):
+                    logger.warning(f"{filename} has unexpected type {type(data).__name__}, resetting to dict")
+                    return {}
             logger.info(f"Data successfully loaded from the file {filename}")
             return data
         except FileNotFoundError:
