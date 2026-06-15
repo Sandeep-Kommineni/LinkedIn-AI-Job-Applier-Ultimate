@@ -39,6 +39,7 @@ from src.job_manager.linkedin.authenticator_linkedin import LinkedInAuthenticato
 from src.job_manager.linkedin.job_manager_linkedin import LinkedInJobManager
 from src.job_manager.linkedin.search_customizer_linkedin import SearchCustomizer
 from src.job_manager.resume_anonymizer import ResumeAnonymizer
+from src.llm.apply_agent import ApplyAgent
 from src.llm.llm_manager import GPTAnswerer
 from src.pydantic_models.config_models import Secrets
 from src.pydantic_models.prompt_models import ResumeStructure
@@ -138,8 +139,14 @@ async def generate_tailored_resume(
     return str(filepath)
 
 
-async def apply_to_url(page, job_url: str, linkedin_email: str, resume_anonymizer) -> str:
-    """Navigate to a job URL and apply using the existing Easy Apply flow.
+async def apply_to_url(
+    page, job_url: str, linkedin_email: str, resume_anonymizer,
+    llm_api_key: str = None, llm_api_url: str = None,
+) -> str:
+    """Navigate to a job URL and apply — same flow as the full bot.
+
+    Tries Easy Apply first. If EASY_APPLY_ONLY_MODE is False and the job
+    has an external apply URL, uses the ApplyAgent (browser-use LLM agent).
 
     Returns: 'Success', 'Skip', or 'Error'.
     """
@@ -147,6 +154,16 @@ async def apply_to_url(page, job_url: str, linkedin_email: str, resume_anonymize
 
     search_component = SearchCustomizer(page)
     job_manager = LinkedInJobManager(page, linkedin_email, resume_anonymizer, search_component)
+
+    # Set up the ApplyAgent for non-Easy Apply jobs (same as main bot)
+    if llm_api_key:
+        apply_agent = ApplyAgent(
+            api_key=llm_api_key,
+            browser_storage_state=BROWSER_STORAGE_STATE,
+            llm_api_url=llm_api_url,
+            user_email=linkedin_email,
+        )
+        job_manager.llm_agent_component = apply_agent
 
     vacancy = {"url": job_url}
     result = await job_manager.apply_job(vacancy)
@@ -228,7 +245,8 @@ async def main():
             for url in urls:
                 try:
                     result = await apply_to_url(
-                        page, url, secrets_config.linkedin_email, resume_anonymizer
+                        page, url, secrets_config.linkedin_email, resume_anonymizer,
+                        llm_api_key=llm_api_key,
                     )
                     results.append(("apply", url, result))
                 except Exception as e:
