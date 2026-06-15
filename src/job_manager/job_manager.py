@@ -97,6 +97,9 @@ class BaseJobManager(ABC):
     def _update_skill_stat(self, skills) -> None:
         """Update the statistics of the most demanded skills in the vacancy and save it to a file"""
         logger.info("Updating the statistics of the most demanded skills in the vacancy")
+        # Safety: ensure skill_stat is a dict (file may have been cleared to a list)
+        if not isinstance(self.skill_stat, dict):
+            self.skill_stat = {}
         for skill in skills:
             if ";" in skill:
                 processed_skills = self._process_skill_string(skill)
