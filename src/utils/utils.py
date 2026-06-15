@@ -743,6 +743,18 @@ def check_salary_threshold(
     if not salary_filter_config.get("enabled", False):
         return False, ""
 
+    # Check for explicit unpaid/no-compensation keywords first
+    unpaid_patterns = [
+        r"\bunpaid\b",
+        r"\bno\s+compensation\b",
+        r"\bno\s+pay\b",
+        r"\bvolunteer\s+(?:role|position|internship)\b",
+        r"\bstipend[\s:]+(?:none|0|not\s+provided)\b",
+    ]
+    for pattern in unpaid_patterns:
+        if re.search(pattern, job_description, re.IGNORECASE):
+            return True, "Job explicitly mentions unpaid/no compensation — skipping"
+
     parsed = parse_salary_from_text(job_description, job_location)
     if not parsed["found"]:
         return False, ""

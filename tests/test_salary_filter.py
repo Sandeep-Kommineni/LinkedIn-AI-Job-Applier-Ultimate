@@ -231,3 +231,29 @@ class TestCheckSalaryThreshold:
     def test_acceptable_usd_allows_job(self, enabled_config):
         skip, reason = check_salary_threshold("$60,000 per year", enabled_config)
         assert skip is False
+
+    # -- Unpaid / no compensation detection --
+    def test_unpaid_skips_job(self, enabled_config):
+        skip, reason = check_salary_threshold(
+            "Compensation: Unpaid. This is a 4-month internship.", enabled_config
+        )
+        assert skip is True
+        assert "unpaid" in reason.lower()
+
+    def test_no_compensation_skips_job(self, enabled_config):
+        skip, reason = check_salary_threshold(
+            "This role offers no compensation but great learning.", enabled_config
+        )
+        assert skip is True
+
+    def test_unpaid_case_insensitive(self, enabled_config):
+        skip, reason = check_salary_threshold(
+            "UNPAID internship opportunity", enabled_config
+        )
+        assert skip is True
+
+    def test_paid_job_not_flagged_as_unpaid(self, enabled_config):
+        skip, reason = check_salary_threshold(
+            "Compensation: 8 LPA. Great benefits.", enabled_config
+        )
+        assert skip is False
