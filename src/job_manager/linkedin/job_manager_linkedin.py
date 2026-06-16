@@ -923,10 +923,34 @@ class LinkedInJobManager(BaseJobManager):
         """Extract company description from the job page (async)"""
         company_description = None
         about_company_selectors = [
-            # More specific: Find expandable text box that comes after "About the company" but before next major section
+            # Primary: expandable text box after "About the company"
             (
                 "//h2[contains(text(), 'About the company')]/following::span[@data-testid='expandable-text-box'][not(ancestor::h2[contains(text(), 'About the job')])][1]",
                 "xpath",
+            ),
+            # Fallback: "About the company" followed by any paragraph
+            (
+                "//h2[contains(text(), 'About the company')]/following::p[1]",
+                "xpath",
+            ),
+            # Fallback: "About us" section
+            (
+                "//h2[contains(text(), 'About us')]/following::span[@data-testid='expandable-text-box'][1]",
+                "xpath",
+            ),
+            (
+                "//h2[contains(text(), 'About us')]/following::p[1]",
+                "xpath",
+            ),
+            # Fallback: "About" heading with "company" in text
+            (
+                "//h3[contains(text(), 'About') and contains(text(), 'company')]/following::p[1]",
+                "xpath",
+            ),
+            # Fallback: CSS class-based selectors
+            (
+                "[data-testid='company-description'], [class*='company-description']",
+                "css",
             ),
         ]
 
