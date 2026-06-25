@@ -26,6 +26,8 @@ from config.app_config import (
     FREE_TIER,
     FREE_TIER_RPM_LIMIT,
     JOB_IS_INTERESTING_THRESH,
+    LLM_FALLBACK_MODEL,
+    LLM_FALLBACK_MODEL_TYPE,
     LLM_MODEL_TYPE,
     TEMPERATURE,
 )
@@ -284,51 +286,62 @@ class CerebrasModel(AIModel):
 class AIAdapter:
     """Class for accessing LLM models from different companies via API"""
 
-    def __init__(self, api_key: str = None, llm_proxy: str = None, llm_api_url: str = None):
+    def __init__(self, api_key: str = None, llm_proxy: str = None, llm_api_url: str = None, fallback_api_key: str = None):
         self.model_type = LLM_MODEL_TYPE
         self.easy_apply_model = EASY_APPLY_MODEL
         self.free_tier = FREE_TIER
         self.free_tier_rpm_limit = FREE_TIER_RPM_LIMIT
         self.free_tier_request_queue = deque(maxlen=self.free_tier_rpm_limit)
         self.model = self._create_model(api_key, llm_proxy, llm_api_url)
+        self.fallback_model = None
+        if LLM_FALLBACK_MODEL_TYPE:
+            fbk_key = fallback_api_key or api_key
+            logger.info(f"Fallback LLM configured: {LLM_FALLBACK_MODEL_TYPE} ({LLM_FALLBACK_MODEL})")
+            self.fallback_model = self._create_model(
+                fbk_key, llm_proxy, llm_api_url,
+                model_type=LLM_FALLBACK_MODEL_TYPE, model_name=LLM_FALLBACK_MODEL,
+            )
 
-    def _create_model(self, api_key: str, llm_proxy: str, llm_api_url: str) -> AIModel:
-        logger.info(f"Using {self.model_type} from {self.easy_apply_model}")
+    def _create_model(self, api_key: str, llm_proxy: str, llm_api_url: str,
+                      model_type: str = None, model_name: str = None) -> AIModel:
+        model_type = model_type or self.model_type
+        model_name = model_name or self.easy_apply_model
+        logger.info(f"Using {model_type} from {model_name}")
 
-        if self.model_type == "gemini":
+        if model_type == "gemini":
             if not api_key:
                 raise ValueError("API key is required for Gemini model")
-            return GeminiModel(api_key, self.easy_apply_model, llm_proxy)
-        elif self.model_type == "openai":
+            return GeminiModel(api_key, model_name, llm_proxy)
+        elif model_type == "openai":
             if not api_key:
                 raise ValueError("API key is required for OpenAI model")
-            return OpenAIModel(api_key, self.easy_apply_model, llm_proxy)
-        elif self.model_type == "claude":
+            return OpenAIModel(api_key, model_name, llm_proxy)
+        elif model_type == "claude":
             if not api_key:
                 raise ValueError("API key is required for Claude model")
-            return ClaudeModel(api_key, self.easy_apply_model)
-        elif self.model_type == "ollama":
-            return OllamaModel(self.easy_apply_model, llm_api_url)
-        elif self.model_type == "openrouter":
-            return OpenRouterModel(api_key, self.easy_apply_model, llm_proxy)
-        elif self.model_type == "nvidia_nim":
+            return ClaudeModel(api_key, model_name)
+        elif model_type == "ollama":
+            return OllamaModel(model_name, llm_api_url)
+        elif model_type == "openrouter":
+            return OpenRouterModel(api_key, model_name, llm_proxy)
+        elif model_type == "nvidia_nim":
             if not api_key:
                 raise ValueError("API key is required for NVIDIA NIM model")
-            return NvidiaNimModel(api_key, self.easy_apply_model, llm_proxy)
-        elif self.model_type == "groq":
+            return NvidiaNimModel(api_key, model_name, llm_proxy)
+        elif model_type == "groq":
             if not api_key:
                 raise ValueError("API key is required for Groq model")
-            return GroqModel(api_key, self.easy_apply_model, llm_proxy)
-        elif self.model_type == "cerebras":
+            return GroqModel(api_key, model_name, llm_proxy)
+        elif model_type == "cerebras":
             if not api_key:
                 raise ValueError("API key is required for Cerebras model")
-            return CerebrasModel(api_key, self.easy_apply_model, llm_proxy)
-        # elif self.model_type == "xai":
-        #     return xAIModel(api_key, self.easy_apply_model)
-        # elif self.model_type == "huggingface":
-        #     return HuggingFaceModel(api_key, self.easy_apply_model)
+            return CerebrasModel(api_key, model_name, llm_proxy)
+        # elif model_type == "xai":
+        #     return xAIModel(api_key, model_name)
+        # elif model_type == "huggingface":
+        #     return HuggingFaceModel(api_key, model_name)
         else:
-            raise ValueError(f"Unsupported model type: {LLM_MODEL_TYPE}")
+            raise ValueError(f"Unsupported model type: {model_type}")
 
     def invoke(self, prompt: str) -> str:
         if self.free_tier:
@@ -340,7 +353,22 @@ class AIAdapter:
                 if time_delta < timedelta(seconds=60):
                     pause(60 - time_delta.total_seconds(), 60 - time_delta.total_seconds() + 1)
             self.free_tier_request_queue.append(datetime.now())
-        return self.model.invoke(prompt)
+        try:
+            return self.model.invoke(prompt)
+        except Exception as e:
+            if self.fallback_model:
+                logger.warning(
+                    f"Primary model ({self.model_type}) failed: {type(e).__name__}: {e}. "
+                    f"Trying fallback ({LLM_FALLBACK_MODEL_TYPE})..."
+                )
+                try:
+                    return self.fallback_model.invoke(prompt)
+                except Exception as fe:
+                    logger.error(
+                        f"Fallback model ({LLM_FALLBACK_MODEL_TYPE}) also failed: "
+                        f"{type(fe).__name__}: {fe}"
+                    )
+            raise
 
 
 class LLMLogger:
@@ -626,7 +654,8 @@ class GPTAnswerer:
         self.job_llm_time_seconds: Dict[str, float] = {}
         self._job_llm_lock = threading.Lock()
         self.linkedin_message_preferences: Dict[str, Any] = {}
-        self.ai_adapter = AIAdapter(llm_api_key, llm_proxy, llm_api_url)
+        llm_fallback_api_key = os.getenv("llm_fallback_api_key", "")
+        self.ai_adapter = AIAdapter(llm_api_key, llm_proxy, llm_api_url, fallback_api_key=llm_fallback_api_key)
         self.llm_cheap = LoggerChatModel(
             self.ai_adapter,
             context_provider=self._get_llm_context,

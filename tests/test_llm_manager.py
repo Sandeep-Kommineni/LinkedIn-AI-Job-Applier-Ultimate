@@ -1,6 +1,6 @@
 """Test suite for src/llm/llm_manager.py"""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 import pytest
 from langchain_core.messages import AIMessage
@@ -592,7 +592,7 @@ class TestGPTAnswerer:
         """Test GPTAnswerer initialization"""
         answerer = GPTAnswerer(mock_api_key, mock_llm_proxy)
 
-        mock_ai_adapter.assert_called_once_with(mock_api_key, mock_llm_proxy, None)
+        mock_ai_adapter.assert_called_once_with(mock_api_key, mock_llm_proxy, None, fallback_api_key=ANY)
         assert answerer.job is None
 
     def test_gpt_answerer_find_best_match_exact(self):
