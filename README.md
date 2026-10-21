@@ -108,7 +108,7 @@ This project enhances the original codebase with several powerful new features:
 
 *   Python 3.12
 *   Git
-*   [uv](https://github.com/astral-sh/uv) (optional, for faster installation)
+*   [uv](https://github.com/astral-sh/uv)
 
 ### Installation
 
@@ -130,7 +130,7 @@ This project enhances the original codebase with several powerful new features:
 3.  **Install additional software**
     ```bash
     # Install Chromium browser for Playwright
-    playwright install chromium
+    uv run playwright install chromium
     ```
 
 #### Option 2: Docker Installation
@@ -505,6 +505,14 @@ What operations the LLM performs to apply to a vacancy:
 This is agentic flow and it consumes **A LOT** of tokens. You can multiply previous cost values like 10x-100x times!
 
 So we do not recommend you to use this mode until you have enough money for that and understand what you are doing.
+
+**Status:** Non-Easy Apply works with the current [browser-use](https://github.com/browser-use/browser-use) version (0.13.11) — in our tests the agent navigated a real application forms, filled text fields, autocomplete and dropdown questions, and uploaded the resume. But it still burns a lot of tokens: a single application took **60k-340k input tokens** (~$0.02-$0.33 depending on the model, more with `use_vision=True`).
+
+**Alternatives:** if you only apply to a few external vacancies, a general-purpose browser agent can be cheaper and more reliable than running this mode for every job. Open the vacancy, give the agent your resume text, and ask it to fill the form (and review it before submitting):
+- [Claude in Chrome](https://claude.com/chrome) — Anthropic's browser extension that lets Claude navigate pages, click and fill forms in your own Chrome.
+- [ChatGPT agent](https://openai.com/index/introducing-chatgpt-agent/) — OpenAI's agent mode, also available in their [ChatGPT Atlas](https://chatgpt.com/atlas) browser.
+
+These tools are not integrated with the bot — you use them manually, and they are billed through your Claude / ChatGPT subscription instead of per-token API usage.
 
 **Note:** If the AI agent encounters a registration form on a 3rd-party application site, it will use your `linkedin_email` as the login and `<linkedin_email_part_before_@>_123456` as the password (e.g. if your email is `john.doe@gmail.com`, the password will be `john.doe_123456`).
 

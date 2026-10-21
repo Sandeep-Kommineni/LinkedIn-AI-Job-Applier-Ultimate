@@ -170,12 +170,8 @@ LLM_MODEL_TYPE = "openrouter"
 # LLM_MODEL_TYPE = "openai"
 
 # LLM models
-EASY_APPLY_MODEL = "google/gemini-3.1-flash-lite-preview"
-# EASY_APPLY_MODEL = "google/gemini-3-flash-preview"
-# EASY_APPLY_MODEL = "gpt-5-mini"
-APPLY_AGENT_MODEL = "google/gemini-3.1-flash-lite-preview"
-# APPLY_AGENT_MODEL = "google/gemini-3-flash-preview"
-# APPLY_AGENT_MODEL = "gpt-5-mini"
+EASY_APPLY_MODEL = "anthropic/claude-haiku-5.5"
+APPLY_AGENT_MODEL = "anthropic/claude-haiku-5.5"
 
 """
 Easy Apply model temperature

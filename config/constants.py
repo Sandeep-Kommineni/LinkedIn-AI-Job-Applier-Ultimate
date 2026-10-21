@@ -51,12 +51,16 @@ CUSTOM_COST_PER_TOKEN = {
 PRICE_DICT: dict[str, dict[str, float]] = {
     # Gemini
     "gemini-3.1-flash-lite-preview": {
-        "input_cost_per_token": 0.075 / 1_000_000,
-        "output_cost_per_token": 0.30 / 1_000_000,
+        "input_cost_per_token": 0.25 / 1_000_000,
+        "output_cost_per_token": 1.50 / 1_000_000,
     },
     "gemini-3-flash-preview": {
         "input_cost_per_token": 0.15 / 1_000_000,
         "output_cost_per_token": 0.60 / 1_000_000,
+    },
+    "gemini-3.8-flash": {
+        "input_cost_per_token": 0.825 / 1_000_000,
+        "output_cost_per_token": 4.125 / 1_000_000,
     },
     # OpenAI
     "gpt-4o-mini": {
@@ -79,6 +83,10 @@ PRICE_DICT: dict[str, dict[str, float]] = {
     "anthropic/claude-haiku-4-5": {
         "input_cost_per_token": 0.80 / 1_000_000,
         "output_cost_per_token": 4.00 / 1_000_000,
+    },
+    "anthropic/claude-haiku-5.5": {
+        "input_cost_per_token": 0.10 / 1_000_000,
+        "output_cost_per_token": 0.50 / 1_000_000,
     },
     "anthropic/claude-sonnet-4": {
         "input_cost_per_token": 3.00 / 1_000_000,

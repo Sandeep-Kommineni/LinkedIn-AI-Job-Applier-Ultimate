@@ -8,7 +8,7 @@ authors = [
 readme = "README.md"
 requires-python = "==3.12.7"
 dependencies = [
-    "browser-use==0.12.6",
+    "browser-use==0.13.11",
     "fastapi==0.115.12",
     "httpx==0.28.1",
     "inquirer==3.4.1",
@@ -24,9 +24,9 @@ dependencies = [
     "Levenshtein==0.27.3",
     "loguru==0.7.2",
     "playwright==1.58.0",
-    "pydantic==2.12.5",
+    "pydantic==2.13.5",
     "PyYAML==6.0.2",
-    "pypdf==6.9.1",
+    "pypdf==6.16.2",
     "reportlab==4.4.9",
     "telethon==1.39.0",
     "pynput==1.8.1",

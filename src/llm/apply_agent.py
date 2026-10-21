@@ -65,7 +65,7 @@ class ApplyAgent:
                 import os
 
                 os.environ["OLLAMA_BASE_URL"] = llm_api_url
-            llm = ChatOllama(model=self.model, base_url=llm_api_url)
+            llm = ChatOllama(model=self.model, host=llm_api_url)
         elif model_type == "openrouter":
             llm = ChatOpenAI(
                 api_key=self.api_key,
@@ -188,7 +188,7 @@ class ApplyAgent:
                 browser=browser,
                 llm=self.llm,
                 tools=tools,
-                use_vision=False,
+                use_vision=False,  # increases token consumption but also increases accuracy
                 use_thinking=False,
                 # Cap browser-use churn: defaults (max_failures=5, step_timeout=180s) let
                 # element-index drift loops eat tokens without ever raising.
@@ -197,11 +197,15 @@ class ApplyAgent:
                 save_conversation_path=Path(LOG_DIR).absolute() / "apply_agent_conversation",
                 available_file_paths=available_file_paths,
             )
-            await self.agent.run()
+            history = await self.agent.run()
         finally:
             await browser.stop()
 
         self._log_token_usage(task)
+        if not history.is_successful():
+            raise RuntimeError(
+                history.final_result() or "Apply agent did not complete the application"
+            )
         emit_event("agent_apply_completed", "External apply agent completed", url=job_url)
 
     def _log_token_usage(self, task: str) -> None:

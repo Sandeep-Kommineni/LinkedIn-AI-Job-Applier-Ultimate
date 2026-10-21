@@ -1,5 +1,5 @@
-# Use the official Python 3.12.10 image as the base
-FROM python:3.12.10-slim
+# Use the official Python 3.12.7 image as the base (matches requires-python in pyproject.toml)
+FROM python:3.12.7-slim
 
 # Set environment variables to prevent Python from writing bytecode and buffering output
 ENV PYTHONUNBUFFERED=1
@@ -47,11 +47,15 @@ RUN cp /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 # Set the working directory
 WORKDIR /app
 
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:0.7.5 /uv /uvx /bin/
+
 # Copy Python dependencies first for better layer caching
-COPY requirements.txt .
+COPY pyproject.toml uv.lock ./
 
 # Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+RUN uv sync --frozen --no-dev --no-install-project
+ENV PATH="/app/.venv/bin:$PATH"
 
 # Install Playwright browsers (Chromium)
 RUN playwright install chromium
