@@ -429,7 +429,11 @@ class LinkedInEasyApplier(BaseEasyApplier):
                 logger.info(f"Found {len(error_texts)} errors")
                 await self._fill_textbox_question_errors()
                 await async_pause(1, 2)
-                next_button, _ = await self._find_next_or_submit_button()
+                next_button, button_text = await self._find_next_or_submit_button()
+                if self.test_mode and button_text == "submit application":
+                    logger.debug("Test mode is enabled, skipping application form submission")
+                    await self._discard_application()
+                    return True
                 try:
                     await next_button.click(timeout=1000)
                 except Exception as e:

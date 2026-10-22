@@ -931,6 +931,35 @@ class TestHandleApplyResult:
         assert job_applier.error_num == 0
 
     @pytest.mark.asyncio
+    async def test_handle_apply_result_test_mode_success_is_not_recorded(self, job_applier):
+        job_applier.applies_num = 0
+        job_applier.success_applies_num = 0
+        job_applier.total_applies_num = 0
+        job_applier.error_num = 0
+        job_applier.cache = JobManagerCache()
+
+        job = Job(
+            job_title="Software Engineer",
+            company_name="Tech Corp",
+            url="https://linkedin.com/jobs/view/1",
+        )
+
+        with (
+            patch("src.job_manager.job_manager.emit_event"),
+            patch("src.job_manager.job_manager.TEST_MODE", True),
+            patch("src.job_manager.job_manager.COLLECT_INFO_MODE", False),
+            patch.object(job_applier, "_save_company") as mock_save_company,
+            patch.object(job_applier, "_write_the_last_search_time") as mock_write_last_search,
+        ):
+            await job_applier._handle_apply_result(("Success", ""), job)
+
+        assert job_applier.applies_num == 1
+        assert job_applier.success_applies_num == 0
+        assert job_applier.total_applies_num == 0
+        mock_save_company.assert_not_called()
+        mock_write_last_search.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_handle_apply_result_passes_evaluation_to_save_company(self, job_applier):
         job_applier.applies_num = 0
         job_applier.success_applies_num = 0

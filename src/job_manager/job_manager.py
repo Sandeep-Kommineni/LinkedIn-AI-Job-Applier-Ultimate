@@ -464,6 +464,12 @@ class BaseJobManager(ABC):
     ) -> None:
         """Handle the result of a job application attempt"""
         result, _ = apply_result
+        if TEST_MODE and result == "Success":
+            # The form was filled and discarded, nothing was submitted: don't save it anywhere,
+            # otherwise a real run would skip this vacancy (and, via success.yaml, the whole company).
+            logger.info(f"Test mode: form filled but not submitted for {job.job_title}")
+            self.applies_num += 1
+            return
         emit_event(
             "job_result",
             f"Job result: {result}",

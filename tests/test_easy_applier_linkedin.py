@@ -401,6 +401,23 @@ class TestCheckAndFixErrors:
             result = await applier._check_and_fix_errors(mock_button)
         assert result is True
 
+    @pytest.mark.asyncio
+    async def test_test_mode_never_clicks_submit_after_fixing_errors(self, applier):
+        next_button = AsyncMock()
+        submit_button = AsyncMock()
+        applier.test_mode = True
+        applier._find_all_form_errors = AsyncMock(return_value=["error"])
+        applier._fill_textbox_question_errors = AsyncMock()
+        applier._discard_application = AsyncMock()
+        applier._find_next_or_submit_button = AsyncMock(
+            return_value=(submit_button, "submit application")
+        )
+        with patch("src.job_manager.linkedin.easy_applier_linkedin.async_pause"):
+            result = await applier._check_and_fix_errors(next_button)
+        assert result is True
+        submit_button.click.assert_not_called()
+        applier._discard_application.assert_awaited_once()
+
 
 class TestIsUploadField:
     @pytest.mark.asyncio
