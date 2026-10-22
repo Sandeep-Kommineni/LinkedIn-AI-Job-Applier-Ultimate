@@ -945,7 +945,7 @@ class TestHandleApplyResult:
         )
 
         with (
-            patch("src.job_manager.job_manager.emit_event"),
+            patch("src.job_manager.job_manager.emit_event") as mock_emit_event,
             patch("src.job_manager.job_manager.TEST_MODE", True),
             patch("src.job_manager.job_manager.COLLECT_INFO_MODE", False),
             patch.object(job_applier, "_save_company") as mock_save_company,
@@ -958,6 +958,7 @@ class TestHandleApplyResult:
         assert job_applier.total_applies_num == 0
         mock_save_company.assert_not_called()
         mock_write_last_search.assert_not_called()
+        assert mock_emit_event.call_args.kwargs["result"] == "test"
 
     @pytest.mark.asyncio
     async def test_handle_apply_result_passes_evaluation_to_save_company(self, job_applier):

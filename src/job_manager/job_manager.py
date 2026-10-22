@@ -464,22 +464,23 @@ class BaseJobManager(ABC):
     ) -> None:
         """Handle the result of a job application attempt"""
         result, _ = apply_result
-        if TEST_MODE and result == "Success":
-            # The form was filled and discarded, nothing was submitted: don't save it anywhere,
-            # otherwise a real run would skip this vacancy (and, via success.yaml, the whole company).
-            logger.info(f"Test mode: form filled but not submitted for {job.job_title}")
-            self.applies_num += 1
-            return
+        test_mode_success = TEST_MODE and result == "Success"
+        event_result = "Test" if test_mode_success else result
         emit_event(
             "job_result",
-            f"Job result: {result}",
-            result=result.lower(),
+            f"Job result: {event_result}",
+            result=event_result.lower(),
             job_title=job.job_title,
             company_name=job.company_name,
             url=job.url,
             submitted_resume_path=(evaluation or {}).get("submitted_resume_path"),
         )
         self.applies_num += 1
+        if test_mode_success:
+            # The form was filled and discarded, nothing was submitted: don't save it anywhere,
+            # otherwise a real run would skip this vacancy (and, via success.yaml, the whole company).
+            logger.info(f"Test mode: form filled but not submitted for {job.job_title}")
+            return
         if result != "Limit" and COLLECT_INFO_MODE is False:
             if self._should_save_skip_as_interesting(apply_result):
                 score = (evaluation or {}).get("interest_score") or 0
