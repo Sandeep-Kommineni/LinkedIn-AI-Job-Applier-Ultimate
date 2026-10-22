@@ -80,6 +80,34 @@ class TestEasyApplyButtonDetection:
             assert result is True
             button.first.click.assert_awaited_once()
 
+    @pytest.mark.asyncio
+    async def test_find_easy_apply_button_only_queries_easy_apply_controls(self, easy_applier):
+        """A plain "Apply" link (external site) or a similar-job card must never be clicked"""
+        job = Job(
+            job_title="Engineer",
+            company_name="Example",
+            url="https://www.linkedin.com/jobs/view/12345",
+        )
+        easy_applier.page.reload = AsyncMock()
+
+        with (
+            patch.object(easy_applier, "check_for_premium_redirect", new_callable=AsyncMock),
+            patch.object(
+                easy_applier, "_check_easy_apply_limit", new_callable=AsyncMock, return_value=False
+            ),
+            patch(
+                f"{MODULE}.find_elements_safely", new_callable=AsyncMock, return_value=[]
+            ) as mock_find,
+            patch(f"{MODULE}.async_pause", new_callable=AsyncMock),
+        ):
+            await easy_applier._find_easy_apply_button(job)
+
+        selectors = {call.args[1] for call in mock_find.await_args_list}
+        assert selectors
+        for selector in selectors:
+            assert '@aria-label, "Easy Apply"' in selector
+            assert "contains(., " not in selector
+
 
 class TestNextButtonDetection:
     @pytest.mark.asyncio

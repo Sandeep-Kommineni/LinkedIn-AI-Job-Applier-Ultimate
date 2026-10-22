@@ -282,7 +282,9 @@ class LinkedInEasyApplier(BaseEasyApplier):
 
             easy_apply_selectors = [
                 '//button[contains(@aria-label, "Easy Apply")]',
-                '//a[contains(., "Apply")]',
+                # Match on aria-label only: a plain "Apply" link goes to an external site, and
+                # "Similar jobs" cards contain an "Easy Apply" badge in their text
+                '//a[contains(@aria-label, "Easy Apply")]',
             ]
 
             easy_apply_buttons = []
