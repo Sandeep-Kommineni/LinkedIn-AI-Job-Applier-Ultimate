@@ -1224,11 +1224,11 @@ class GPTAnswerer:
         logger.debug(f"LLM response: '{output}'")
         # parse the LLM response
         try:
-            score = re.search(r"Score: (\d+)", output).group(1)
-            reasoning = re.search(r"Reasoning: (.+)", output, re.DOTALL).group(1)
+            score = re.search(r"Score:\s*(\d+)", output).group(1)
+            reasoning = re.search(r"Reasoning:\s*(.+)", output, re.DOTALL).group(1)
         except AttributeError:
             logger.error(f"LLM returned an incorrect response:\n{output}")
-            return False
+            return None
         logger.info(f"Job interest score: {score}")
         if int(score) < JOB_IS_INTERESTING_THRESH:
             logger.info(f"Job is not interesting: {reasoning}")

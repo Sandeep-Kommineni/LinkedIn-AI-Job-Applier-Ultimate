@@ -966,6 +966,57 @@ class TestGPTAnswerer:
         assert score == "50"
         assert "Not a good fit" in reasoning
 
+    @patch("src.llm.llm_manager.JOB_IS_INTERESTING_THRESH", 70)
+    @patch("src.llm.llm_manager.AIAdapter")
+    @patch("src.llm.llm_manager.LoggerChatModel")
+    def test_gpt_answerer_job_is_interesting_reasoning_on_next_line(
+        self,
+        mock_logger_chat,
+        mock_ai_adapter,
+        mock_api_key,
+        mock_llm_proxy,
+        mock_resume_structured,
+        mock_resume_readable,
+        mock_job,
+    ):
+        """Reasoning that starts on the line after the label is parsed"""
+        mock_chain = MagicMock()
+        mock_chain.invoke.return_value = "Score: 82\nReasoning:\n\n**Job requirements.** Strong fit"
+
+        answerer = GPTAnswerer(mock_api_key, mock_llm_proxy)
+        answerer.chains["job_is_interesting"] = mock_chain
+        answerer.set_resume(mock_resume_structured, mock_resume_readable)
+        answerer.search_parameters = "Remote: True"
+
+        is_interesting, score, reasoning = answerer.job_is_interesting(mock_job)
+
+        assert is_interesting is True
+        assert score == "82"
+        assert reasoning.startswith("**Job requirements.**")
+
+    @patch("src.llm.llm_manager.AIAdapter")
+    @patch("src.llm.llm_manager.LoggerChatModel")
+    def test_gpt_answerer_job_is_interesting_unparseable_returns_none(
+        self,
+        mock_logger_chat,
+        mock_ai_adapter,
+        mock_api_key,
+        mock_llm_proxy,
+        mock_resume_structured,
+        mock_resume_readable,
+        mock_job,
+    ):
+        """A reply without a score returns None so callers can treat it as an error"""
+        mock_chain = MagicMock()
+        mock_chain.invoke.return_value = "I cannot evaluate this vacancy."
+
+        answerer = GPTAnswerer(mock_api_key, mock_llm_proxy)
+        answerer.chains["job_is_interesting"] = mock_chain
+        answerer.set_resume(mock_resume_structured, mock_resume_readable)
+        answerer.search_parameters = "Remote: True"
+
+        assert answerer.job_is_interesting(mock_job) is None
+
     @patch("src.llm.llm_manager.AIAdapter")
     @patch("src.llm.llm_manager.LoggerChatModel")
     def test_gpt_answerer_write_cover_letter(

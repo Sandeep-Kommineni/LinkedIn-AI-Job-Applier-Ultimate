@@ -328,11 +328,14 @@ class LinkedInJobManager(BaseJobManager):
                         "Monkey mode is enabled and Collect info mode is disabled, applying to all vacancies"
                     )
                 else:
-                    (
-                        job_is_interesting,
-                        score,
-                        reasoning,
-                    ) = self.llm_answerer_component.job_is_interesting(job.model_dump())
+                    interest_result = self.llm_answerer_component.job_is_interesting(
+                        job.model_dump()
+                    )
+                    if interest_result is None:
+                        apply_result = ("Error", "Error while determining if job is interesting")
+                        await self._handle_apply_result(apply_result, job, evaluation=evaluation)
+                        return "Error"
+                    job_is_interesting, score, reasoning = interest_result
                 evaluation["interest_score"] = int(score) if str(score).isdigit() else 0
                 evaluation["interest_reason"] = reasoning
                 if not job_is_interesting:

@@ -970,3 +970,41 @@ class TestApplyJob:
             result = await manager.apply_job({"url": LINKEDIN_JOB_URL})
 
         assert result == "Limit"
+
+    @pytest.mark.asyncio
+    async def test_returns_error_when_interest_cannot_be_determined(
+        self, manager, mock_page, test_job
+    ):
+        self._setup_manager(manager)
+        new_page = AsyncMock()
+        new_page.url = LINKEDIN_JOB_URL
+        mock_page.context.new_page = AsyncMock(return_value=new_page)
+
+        mock_llm = MagicMock()
+        mock_llm.job_is_interesting.return_value = None
+        mock_llm.set_job = MagicMock()
+        manager.llm_answerer_component = mock_llm
+
+        with (
+            patch.object(
+                manager,
+                "_get_detailed_job_description",
+                new_callable=AsyncMock,
+                return_value=test_job,
+            ),
+            patch(
+                "src.job_manager.linkedin.job_manager_linkedin.async_pause",
+                new_callable=AsyncMock,
+            ),
+            patch.object(manager, "easy_apply", new_callable=AsyncMock) as mock_easy_apply,
+            patch.object(
+                manager, "_handle_apply_result", new_callable=AsyncMock
+            ) as mock_handle_result,
+            patch("src.job_manager.linkedin.job_manager_linkedin.COLLECT_INFO_MODE", False),
+            patch("src.job_manager.linkedin.job_manager_linkedin.MONKEY_MODE", False),
+        ):
+            result = await manager.apply_job({"url": LINKEDIN_JOB_URL})
+
+        assert result == "Error"
+        mock_easy_apply.assert_not_called()
+        assert mock_handle_result.call_args.args[0][0] == "Error"
