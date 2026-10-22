@@ -204,6 +204,57 @@ class TestClaudeModel:
         assert isinstance(response, AIMessage)
         assert response.content == "Test response"
 
+    @patch("langchain_anthropic.ChatAnthropic")
+    def test_claude_model_retries_without_temperature(self, mock_chat_anthropic, mock_api_key):
+        """Models that reject `temperature` are re-created without it and the call is retried"""
+        rejecting_model = MagicMock()
+        rejecting_model.invoke.side_effect = Exception(
+            "Error code: 400 - `temperature` is deprecated for this model."
+        )
+        accepting_model = MagicMock()
+        accepting_model.invoke.return_value = AIMessage(content="Test response")
+        mock_chat_anthropic.side_effect = [rejecting_model, accepting_model]
+
+        model = ClaudeModel(mock_api_key, "claude-new-model")
+        response = model.invoke("Test prompt")
+
+        assert response.content == "Test response"
+        assert "temperature" in mock_chat_anthropic.call_args_list[0].kwargs
+        assert "temperature" not in mock_chat_anthropic.call_args_list[1].kwargs
+
+    @patch("langchain_anthropic.ChatAnthropic")
+    def test_claude_model_flattens_content_blocks(self, mock_chat_anthropic, mock_api_key):
+        """Thinking blocks are dropped and text blocks are joined into a plain string"""
+        mock_model = MagicMock()
+        mock_model.invoke.return_value = AIMessage(
+            content=[
+                {"type": "thinking", "thinking": "internal reasoning", "signature": "abc"},
+                {"type": "text", "text": "Score: 80\n"},
+                {"type": "text", "text": "Reasoning: Good fit"},
+            ],
+            usage_metadata={"input_tokens": 10, "output_tokens": 5, "total_tokens": 15},
+        )
+        mock_chat_anthropic.return_value = mock_model
+
+        model = ClaudeModel(mock_api_key, "claude-new-model")
+        response = model.invoke("Test prompt")
+
+        assert response.content == "Score: 80\nReasoning: Good fit"
+        assert response.usage_metadata["total_tokens"] == 15
+
+    @patch("langchain_anthropic.ChatAnthropic")
+    def test_claude_model_reraises_unrelated_errors(self, mock_chat_anthropic, mock_api_key):
+        """Errors not caused by `temperature` are propagated"""
+        mock_model = MagicMock()
+        mock_model.invoke.side_effect = Exception("Error code: 401 - invalid x-api-key")
+        mock_chat_anthropic.return_value = mock_model
+
+        model = ClaudeModel(mock_api_key, "claude-new-model")
+
+        with pytest.raises(Exception, match="invalid x-api-key"):
+            model.invoke("Test prompt")
+        assert mock_chat_anthropic.call_count == 1
+
 
 class TestOllamaModel:
     """Tests for OllamaModel class"""
