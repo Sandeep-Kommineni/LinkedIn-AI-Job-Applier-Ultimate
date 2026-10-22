@@ -2,6 +2,7 @@
 Abstract base class for job-site search customizers.
 """
 
+import re
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Union
 
@@ -51,7 +52,9 @@ class BaseSearchCustomizer(ABC):
         location_lower = job_location.lower()
 
         for blacklisted in self.title_blacklist:
-            if blacklisted.lower() in title_lower:
+            # Whole-word match: "Java" must not block "JavaScript", "Intern" not "Internal"
+            pattern = rf"(?<!\w){re.escape(blacklisted.lower())}(?!\w)"
+            if re.search(pattern, title_lower):
                 logger.info(f"Job '{job_title}' skipped - title blacklisted: {blacklisted}")
                 return True
 

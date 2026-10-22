@@ -128,3 +128,16 @@ class TestIsJobBlacklisted:
         customizer.title_blacklist = ["sales"]
         assert customizer.is_job_blacklisted("Sales Manager", "Corp", "NY") is True
         assert customizer.is_job_blacklisted("Software Engineer", "Corp", "NY") is False
+
+    def test_title_blacklist_matches_whole_words_only(self, customizer):
+        customizer.title_blacklist = ["Java", "Intern"]
+        assert customizer.is_job_blacklisted("Senior Java Developer", "Corp", "NY") is True
+        assert customizer.is_job_blacklisted("Software Engineering Intern", "Corp", "NY") is True
+        assert customizer.is_job_blacklisted("Senior JavaScript Engineer", "Corp", "NY") is False
+        assert customizer.is_job_blacklisted("Internal Tools Engineer", "Corp", "NY") is False
+
+    def test_title_blacklist_handles_symbols(self, customizer):
+        customizer.title_blacklist = ["C#", ".NET"]
+        assert customizer.is_job_blacklisted("C# / Node Developer", "Corp", "NY") is True
+        assert customizer.is_job_blacklisted(".NET Engineer", "Corp", "NY") is True
+        assert customizer.is_job_blacklisted("Node.js Engineer", "Corp", "NY") is False
