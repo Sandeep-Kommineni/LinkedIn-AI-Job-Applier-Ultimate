@@ -6,6 +6,7 @@ import argparse
 import re
 from inspect import isawaitable
 from typing import Any, Union
+from urllib.parse import urlencode
 
 from playwright.sync_api import Page
 
@@ -60,6 +61,71 @@ class SearchCustomizer(BaseSearchCustomizer):
             position.strip() for position in self.positions if position and position.strip()
         ]
         return " OR ".join(f'"{position}"' for position in cleaned_positions)
+
+    def build_search_url(self) -> str:
+        """Build a LinkedIn job search URL with keywords, location and filters as query params.
+
+        Typing the location into the search box only works when a typeahead suggestion is
+        selected, otherwise LinkedIn silently keeps the account's default location.
+        """
+        params = {"keywords": self.format_linkedin_keyword_query()}
+        if self.locations:
+            if len(self.locations) > 1:
+                logger.warning(
+                    f"LinkedIn accepts one location per search, using {self.locations[0]!r}"
+                )
+            params["location"] = self.locations[0]
+
+        work_types = [
+            code
+            for enabled, code in ((self.onsite, "1"), (self.remote, "2"), (self.hybrid, "3"))
+            if enabled
+        ]
+        if work_types:
+            params["f_WT"] = ",".join(work_types)
+
+        experience_codes = {
+            "internship": "1",
+            "entry": "2",
+            "associate": "3",
+            "mid_senior_level": "4",
+            "director": "5",
+            "executive": "6",
+        }
+        experience = [
+            code for key, code in experience_codes.items() if self.experience_level.get(key)
+        ]
+        if experience:
+            params["f_E"] = ",".join(experience)
+
+        job_type_codes = {
+            "full_time": "F",
+            "part_time": "P",
+            "contract": "C",
+            "temporary": "T",
+            "volunteer": "V",
+            "internship": "I",
+            "other": "O",
+        }
+        job_types = [code for key, code in job_type_codes.items() if self.job_types.get(key)]
+        if job_types:
+            params["f_JT"] = ",".join(job_types)
+
+        date_codes = {
+            "24_hours": "r86400",
+            "day_24_hours": "r86400",
+            "week": "r604800",
+            "month": "r2592000",
+        }
+        for key, code in date_codes.items():
+            if self.date_posted.get(key):
+                params["f_TPR"] = code
+                break
+
+        if EASY_APPLY_ONLY_MODE:
+            params["f_AL"] = "true"
+
+        return "https://www.linkedin.com/jobs/search/?" + urlencode(params)
 
     async def _set_basic_search_terms(self):
         """Set basic search parameters (keywords and location) - async"""
@@ -392,30 +458,11 @@ class SearchCustomizer(BaseSearchCustomizer):
                 logger.info("LinkedIn Top applicant picks page opened successfully")
                 return
 
-            # Navigate to LinkedIn jobs search
-            await self.page.goto(
-                "https://www.linkedin.com/jobs/search/", wait_until="domcontentloaded"
-            )
+            # Open the search with keywords, location and filters encoded in the URL
+            search_url = self.build_search_url()
+            logger.info(f"Opening LinkedIn search: {search_url}")
+            await self.page.goto(search_url, wait_until="domcontentloaded")
             await async_pause(2, 3)
-
-            # Set basic search terms (keywords and location)
-            await self._set_basic_search_terms()
-            await self._commit_basic_search()
-
-            # Open advanced filters modal
-            if await self._open_all_filters():
-                # Set various filters
-                await self._set_date_posted_filter()
-                await self._set_experience_level_filter()
-                await self._set_job_type_filter()
-                await self._set_work_location_filter()
-                await self._set_easy_apply_filter()
-
-                # Apply all filters
-                if not await self._apply_filters():
-                    logger.warning("Failed to apply filters, continuing with basic search")
-            else:
-                logger.warning("Could not open advanced filters, using basic search only")
 
             logger.info("Search parameters successfully set")
 

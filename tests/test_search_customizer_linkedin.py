@@ -1,6 +1,7 @@
 """Tests for src/job_manager/linkedin/search_customizer_linkedin.py"""
 
 from unittest.mock import AsyncMock, MagicMock, patch
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 
@@ -494,28 +495,23 @@ class TestSetEasyApplyFilter:
 
 class TestSetSearchParams:
     @pytest.mark.asyncio
-    async def test_navigates_to_linkedin_jobs(self, customizer, mock_page):
+    async def test_navigates_to_search_url_without_typing(self, customizer, mock_page):
         with (
             patch(f"{MODULE}.LINKEDIN_RECOMMENDED_JOBS_MODE", False),
             patch(f"{MODULE}.LINKEDIN_TOP_APPLICANT_JOBS_MODE", False),
             patch(f"{MODULE}.async_pause"),
-            patch.object(customizer, "_set_basic_search_terms", new_callable=AsyncMock),
-            patch.object(customizer, "_commit_basic_search", new_callable=AsyncMock),
             patch.object(
-                customizer, "_open_all_filters", new_callable=AsyncMock, return_value=True
-            ),
-            patch.object(customizer, "_set_date_posted_filter", new_callable=AsyncMock),
-            patch.object(customizer, "_set_experience_level_filter", new_callable=AsyncMock),
-            patch.object(customizer, "_set_job_type_filter", new_callable=AsyncMock),
-            patch.object(customizer, "_set_work_location_filter", new_callable=AsyncMock),
-            patch.object(customizer, "_set_easy_apply_filter", new_callable=AsyncMock),
-            patch.object(customizer, "_apply_filters", new_callable=AsyncMock, return_value=True),
+                customizer, "_set_basic_search_terms", new_callable=AsyncMock
+            ) as mock_basic,
+            patch.object(customizer, "_open_all_filters", new_callable=AsyncMock) as mock_filters,
         ):
             await customizer.set_search_params()
 
         mock_page.goto.assert_called_once_with(
-            "https://www.linkedin.com/jobs/search/", wait_until="domcontentloaded"
+            customizer.build_search_url(), wait_until="domcontentloaded"
         )
+        mock_basic.assert_not_called()
+        mock_filters.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_recommended_jobs_mode_ignores_position_search(self, customizer, mock_page):
@@ -561,39 +557,29 @@ class TestSetSearchParams:
         mock_commit.assert_not_called()
         mock_filters.assert_not_called()
 
-    @pytest.mark.asyncio
-    async def test_calls_all_filter_setters_when_filters_open(self, customizer):
-        with (
-            patch(f"{MODULE}.LINKEDIN_RECOMMENDED_JOBS_MODE", False),
-            patch(f"{MODULE}.LINKEDIN_TOP_APPLICANT_JOBS_MODE", False),
-            patch(f"{MODULE}.async_pause"),
-            patch.object(customizer, "_set_basic_search_terms", new_callable=AsyncMock),
-            patch.object(customizer, "_commit_basic_search", new_callable=AsyncMock),
-            patch.object(
-                customizer, "_open_all_filters", new_callable=AsyncMock, return_value=True
-            ),
-            patch.object(
-                customizer, "_set_date_posted_filter", new_callable=AsyncMock
-            ) as mock_date,
-            patch.object(
-                customizer, "_set_experience_level_filter", new_callable=AsyncMock
-            ) as mock_exp,
-            patch.object(
-                customizer, "_set_job_type_filter", new_callable=AsyncMock
-            ) as mock_job_type,
-            patch.object(
-                customizer, "_set_work_location_filter", new_callable=AsyncMock
-            ) as mock_loc,
-            patch.object(customizer, "_set_easy_apply_filter", new_callable=AsyncMock) as mock_easy,
-            patch.object(customizer, "_apply_filters", new_callable=AsyncMock, return_value=True),
-        ):
-            await customizer.set_search_params()
+    def test_build_search_url_encodes_keywords_location_and_filters(self, customizer):
+        with patch(f"{MODULE}.EASY_APPLY_ONLY_MODE", True):
+            url = customizer.build_search_url()
 
-        mock_date.assert_called_once()
-        mock_exp.assert_called_once()
-        mock_job_type.assert_called_once()
-        mock_loc.assert_called_once()
-        mock_easy.assert_called_once()
+        query = parse_qs(urlparse(url).query)
+        assert url.startswith("https://www.linkedin.com/jobs/search/?")
+        assert query["keywords"] == ['"Software Engineer" OR "Python Developer"']
+        assert query["location"] == ["Germany"]
+        assert query["f_WT"] == ["2,3"]
+        assert query["f_E"] == ["2,4"]
+        assert query["f_JT"] == ["F,I"]
+        assert query["f_TPR"] == ["r86400"]
+        assert query["f_AL"] == ["true"]
+
+    def test_build_search_url_uses_first_location_and_omits_easy_apply(self, customizer):
+        customizer.locations = ["Europe", "United States"]
+        customizer.date_posted = {"all_time": True}
+        with patch(f"{MODULE}.EASY_APPLY_ONLY_MODE", False):
+            query = parse_qs(urlparse(customizer.build_search_url()).query)
+
+        assert query["location"] == ["Europe"]
+        assert "f_AL" not in query
+        assert "f_TPR" not in query
 
     @pytest.mark.asyncio
     async def test_skips_filter_setters_when_filters_not_open(self, customizer):
