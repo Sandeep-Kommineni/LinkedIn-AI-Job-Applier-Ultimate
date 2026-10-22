@@ -64,6 +64,41 @@ class TestConfigValidator:
         assert result["title_blacklist"] == []
         assert result["location_blacklist"] == []
 
+    def test_validate_search_config_rejects_multiple_locations_on_linkedin(self, tmp_path):
+        config_file = tmp_path / "search_config.yaml"
+        config_data = {"positions": ["Software Engineer"], "locations": ["Germany", "Japan"]}
+
+        with (
+            patch("main.load_yaml_file", return_value=config_data),
+            patch("main.JOB_SITE", "linkedin"),
+        ):
+            with pytest.raises(ConfigError, match="one location per run, found 2: Germany, Japan"):
+                ConfigValidator().validate_search_config(config_file)
+
+    def test_validate_search_config_allows_multiple_locations_on_indeed(self, tmp_path):
+        config_file = tmp_path / "search_config.yaml"
+        config_data = {"positions": ["Software Engineer"], "locations": ["Germany", "Japan"]}
+
+        with (
+            patch("main.load_yaml_file", return_value=config_data),
+            patch("main.JOB_SITE", "indeed"),
+        ):
+            result = ConfigValidator().validate_search_config(config_file)
+
+        assert result["locations"] == ["Germany", "Japan"]
+
+    def test_validate_search_config_allows_single_location_with_comma_on_linkedin(self, tmp_path):
+        config_file = tmp_path / "search_config.yaml"
+        config_data = {"positions": ["Software Engineer"], "locations": ["Berlin, Germany"]}
+
+        with (
+            patch("main.load_yaml_file", return_value=config_data),
+            patch("main.JOB_SITE", "linkedin"),
+        ):
+            result = ConfigValidator().validate_search_config(config_file)
+
+        assert result["locations"] == ["Berlin, Germany"]
+
     def test_validate_search_config_missing_required_fields(self, tmp_path):
         """Test validation fails with missing required fields"""
         config_file = tmp_path / "invalid_config.yaml"

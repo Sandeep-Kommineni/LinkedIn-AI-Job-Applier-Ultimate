@@ -96,9 +96,15 @@ class ConfigValidator:
             parameters = load_yaml_file(config_yaml_path)
             parameters = SearchConfig(**parameters)
             logger.debug("LinkedIn search config loaded successfully.")
-            return parameters.model_dump()
         except Exception as e:
             raise ConfigError(f"LinkedIn configuration validation error: {str(e)}")
+        # LinkedIn resolves only one location per search; Indeed runs a search per location
+        if JOB_SITE == "linkedin" and len(parameters.locations) > 1:
+            raise ConfigError(
+                f"LinkedIn supports one location per run, found {len(parameters.locations)}: "
+                f"{', '.join(parameters.locations)}"
+            )
+        return parameters.model_dump()
 
     @staticmethod
     def validate_secrets() -> dict:
