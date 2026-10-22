@@ -126,6 +126,7 @@ Answer the question, based on the information from the resume if necessary, or o
 - If it's looks like the question is related to the previous questions (e.g. "If yes/no, who/when/where?"), use the information from the previous questions.
 - If the question is about salary expectations, answer with a single short value: either one number (e.g. "$80000") or a range (e.g. "$80000-160000"), based on what is stated in the resume. Always include the currency symbol. Do not add any extra text.
 - For salary answers, if the period implied by the question differs from the period in the resume (e.g. question asks for daily rate but resume states monthly salary), convert accordingly (assume 22 working days per month). Round the result daily salary (e.g. $8000 per month is ~$363.63 per day, but this sounds strage, so it's better to say $370 per day).
+- Output ONLY the final text to be typed into the form field, wrapped in <answer></answer> tags. No reasoning, explanation or notes outside or inside the tags.
 """
 
 text_question_with_error_template = """
@@ -158,6 +159,7 @@ The objective is to fix the text of a form input on a web page.
 - If answer is about location, don't shrink the name of the city, state, country etc (e.g. write "Texas" instead of "TX") or just remove not relevant information (e.g. if question is about city, don't include state, country, etc).
 - TAKE INTO ACCOUNT that today's date is {current_date}
 - If it's looks like the question is related to the previous questions (e.g. "If yes/no, who/when/where?"), use the information from the previous questions.
+- Output ONLY the final text to be typed into the form field, wrapped in <answer></answer> tags. No reasoning, explanation or notes outside or inside the tags.
 """
 
 # Prompt for answering questions with one of the options
@@ -344,6 +346,7 @@ How many years of experience do you have with AI?
 ---
 When responding, consider all available information, including projects, work experience, and academic background, to provide an accurate and well-reasoned answer.
 Make every effort to infer relevant experience and avoid defaulting to 0 if any related experience can be estimated.
+Output ONLY the final value wrapped in <answer></answer> tags (e.g. <answer>5</answer> or <answer>150000</answer>). No reasoning, explanation or units outside the tags.
 """
 
 coverletter_template = """

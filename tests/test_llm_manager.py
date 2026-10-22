@@ -15,6 +15,7 @@ from src.llm.llm_manager import (
     LoggerChatModel,
     OllamaModel,
     OpenAIModel,
+    extract_answer,
 )
 
 
@@ -773,6 +774,47 @@ class TestGPTAnswerer:
 
         assert result == "5"
 
+    @pytest.mark.parametrize(
+        "llm_output, expected",
+        [
+            (
+                "Salary is BRL 12,500 per month. Annual: 12,500 x 12 = 150,000.\n"
+                "<answer>150000</answer>",
+                "150000",
+            ),
+            (
+                "Node.js since 07/2021 (LukraRapido), about 5 years.\n<answer>5</answer>",
+                "5",
+            ),
+            ("150,000", "150000"),
+            ("about 7 years", "7"),
+        ],
+    )
+    @patch("src.llm.llm_manager.AIAdapter")
+    @patch("src.llm.llm_manager.LoggerChatModel")
+    def test_gpt_answerer_answer_question_numeric_uses_final_answer(
+        self,
+        mock_logger_chat,
+        mock_ai_adapter,
+        mock_api_key,
+        mock_llm_proxy,
+        mock_resume_structured,
+        mock_resume_readable,
+        llm_output,
+        expected,
+    ):
+        """Numbers in the model's reasoning are ignored and thousands separators are kept"""
+        mock_chain = MagicMock()
+        mock_chain.invoke.return_value = llm_output
+
+        answerer = GPTAnswerer(mock_api_key, mock_llm_proxy)
+        answerer.chains = {"numeric_question": mock_chain}
+        answerer.set_resume(mock_resume_structured, mock_resume_readable)
+
+        result = answerer.answer_question_numeric("What is your expected salary?", [])
+
+        assert result == expected
+
     @patch("src.llm.llm_manager.logger")
     @patch("src.llm.llm_manager.AIAdapter")
     @patch("src.llm.llm_manager.LoggerChatModel")
@@ -1125,6 +1167,22 @@ class TestGPTAnswerer:
         assert "Skills" in result
 
 
+class TestExtractAnswer:
+    """Tests for extract_answer helper"""
+
+    def test_returns_text_inside_answer_tags(self):
+        output = "The question asks for the phone number.\n<answer>555-0100</answer>"
+        assert extract_answer(output) == "555-0100"
+
+    def test_keeps_multiline_answer(self):
+        assert extract_answer("<answer>\nHello,\n\nI'm available.\n</answer>") == (
+            "Hello,\n\nI'm available."
+        )
+
+    def test_falls_back_to_whole_output_without_tags(self):
+        assert extract_answer("  $12500 ") == "$12500"
+
+
 class TestGPTAnswererIntegration:
     """Integration tests for GPTAnswerer that test method interactions"""
 
@@ -1154,6 +1212,32 @@ class TestGPTAnswererIntegration:
 
         assert "Python experience" in result
         mock_chain.invoke.assert_called_once()
+
+    @patch("src.llm.llm_manager.AIAdapter")
+    @patch("src.llm.llm_manager.LoggerChatModel")
+    def test_answer_question_textual_wide_range_strips_reasoning(
+        self,
+        mock_logger_chat,
+        mock_ai_adapter,
+        mock_api_key,
+        mock_llm_proxy,
+        mock_resume_structured,
+        mock_resume_readable,
+    ):
+        """Only the tagged answer is returned when the model explains itself first"""
+        mock_chain = MagicMock()
+        mock_chain.invoke.return_value = (
+            "The previous question asked for the country code, so omit it.\n"
+            "<answer>555-0100</answer>"
+        )
+
+        answerer = GPTAnswerer(mock_api_key, mock_llm_proxy)
+        answerer.chains = {"text_question": mock_chain}
+        answerer.set_resume(mock_resume_structured, mock_resume_readable)
+
+        result = answerer.answer_question_textual_wide_range("Mobile phone number", [])
+
+        assert result == "555-0100"
 
     @patch("src.llm.llm_manager.AIAdapter")
     @patch("src.llm.llm_manager.LoggerChatModel")
