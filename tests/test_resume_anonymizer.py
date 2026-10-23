@@ -25,17 +25,6 @@ class TestResumeAnonymizerInit:
         # Anonymizer should still have original value
         assert anonymizer.personal_information["name"] == "John Doe"
 
-    def test_init_initializes_empty_link_lists(self):
-        """Test that init creates empty lists for github and linkedin links"""
-        resume_structured = {
-            "personal_information": {"gender": "male"},
-        }
-
-        anonymizer = ResumeAnonymizer(resume_structured)
-
-        assert anonymizer.github_links == []
-        assert anonymizer.linkedin_links == []
-
 
 class TestAnonymizePersonalInformation:
     """Tests for anonymize_personal_information method"""
@@ -135,9 +124,47 @@ class TestAnonymizePersonalInformation:
         assert "email" not in anonymizer.resume_anonymized["personal_information"]
         assert "phone" not in anonymizer.resume_anonymized["personal_information"]
 
+    def test_anonymize_skips_no_info_fields(self):
+        """Test that "No info" placeholders are not replaced with dummy data"""
+        resume_structured = {
+            "personal_information": {
+                "name": "John Doe",
+                "phone": "No info",
+                "email": "No info",
+                "address": "No info",
+                "zip_code": "No info",
+                "gender": "male",
+            },
+        }
+
+        anonymizer = ResumeAnonymizer(resume_structured)
+        anonymizer.anonymize_personal_information()
+
+        personal_information = anonymizer.resume_anonymized["personal_information"]
+        assert personal_information["name"] == DUMMY_PERSONAL_INFO_MALE["name"]
+        for key in ["phone", "email", "address", "zip_code"]:
+            assert personal_information[key] == "No info"
+
 
 class TestAnonymizeText:
     """Tests for anonymize_text method"""
+
+    def test_anonymize_text_keeps_no_info_text(self):
+        """Test that "No info" values do not cause "No info" text to be replaced"""
+        resume_structured = {
+            "personal_information": {
+                "phone": "No info",
+                "address": "No info",
+                "zip_code": "No info",
+                "gender": "male",
+            },
+        }
+
+        text = "Phone: No info. Address: No info. Zip: No info."
+        anonymizer = ResumeAnonymizer(resume_structured)
+        result = anonymizer.anonymize_text(text)
+
+        assert result == text
 
     def test_anonymize_github_username_with_https(self):
         """Test anonymizing GitHub username with https URL"""
@@ -154,8 +181,6 @@ class TestAnonymizeText:
 
         assert "johndoe" not in result
         assert DUMMY_PERSONAL_INFO_MALE["github"] in result
-        assert len(anonymizer.github_links) == 1
-        assert anonymizer.github_links[0] == "https://github.com/johndoe"
 
     def test_anonymize_github_username_with_http(self):
         """Test anonymizing GitHub username with http URL"""
@@ -186,9 +211,8 @@ class TestAnonymizeText:
         anonymizer = ResumeAnonymizer(resume_structured)
         result = anonymizer.anonymize_text(text)
 
-        # GitHub links without protocol are not anonymized by the current implementation
-        # The regex requires http:// or https:// protocol
-        assert "johndoe" in result  # Not anonymized without protocol
+        assert "johndoe" not in result
+        assert DUMMY_PERSONAL_INFO_MALE["github"] in result
 
     def test_anonymize_linkedin_username_with_https(self):
         """Test anonymizing LinkedIn username with https URL"""
@@ -205,8 +229,6 @@ class TestAnonymizeText:
 
         assert "johndoe" not in result
         assert DUMMY_PERSONAL_INFO_MALE["linkedin"] in result
-        assert len(anonymizer.linkedin_links) == 1
-        assert anonymizer.linkedin_links[0] == "https://linkedin.com/in/johndoe"
 
     def test_anonymize_linkedin_username_with_www(self):
         """Test anonymizing LinkedIn username with www subdomain"""
@@ -225,7 +247,7 @@ class TestAnonymizeText:
         assert DUMMY_PERSONAL_INFO_FEMALE["linkedin"] in result
 
     def test_anonymize_multiple_github_links(self):
-        """Test anonymizing multiple GitHub links"""
+        """Test that only the own GitHub account is anonymized, not similarly named ones"""
         resume_structured = {
             "personal_information": {
                 "github": "https://github.com/johndoe",
@@ -237,8 +259,9 @@ class TestAnonymizeText:
         anonymizer = ResumeAnonymizer(resume_structured)
         result = anonymizer.anonymize_text(text)
 
-        assert "johndoe" not in result
-        assert len(anonymizer.github_links) == 2
+        assert result == (
+            f"Main: {DUMMY_PERSONAL_INFO_MALE['github']} and fork: https://github.com/johndoe-fork"
+        )
 
     def test_anonymize_phone_number(self):
         """Test anonymizing phone number"""
@@ -475,6 +498,55 @@ class TestDeanonymizeText:
 
         assert "johndoe" in deanonymized
         assert "https://linkedin.com/in/johndoe" in deanonymized
+
+    def test_deanonymize_links_without_trailing_punctuation(self):
+        """Test that punctuation after a profile link doesn't end up in the restored link"""
+        resume_structured = {
+            "personal_information": {
+                "github": "https://github.com/johndoe",
+                "linkedin": "https://linkedin.com/in/johndoe",
+                "gender": "male",
+            },
+        }
+        dummy_github = DUMMY_PERSONAL_INFO_MALE["github"]
+        dummy_linkedin = DUMMY_PERSONAL_INFO_MALE["linkedin"]
+
+        original_text = "See https://github.com/johndoe. Or https://linkedin.com/in/johndoe, thanks"
+        anonymizer = ResumeAnonymizer(resume_structured)
+
+        anonymized = anonymizer.anonymize_text(original_text)
+        # LLM output places the links differently from the original text
+        llm_output = f'<a href="{dummy_github}">GitHub</a> <a href="{dummy_linkedin}">LinkedIn</a>'
+        deanonymized = anonymizer.deanonymize_text(llm_output)
+
+        assert anonymized == f"See {dummy_github}. Or {dummy_linkedin}, thanks"
+        assert deanonymized == (
+            '<a href="https://github.com/johndoe">GitHub</a> '
+            '<a href="https://linkedin.com/in/johndoe">LinkedIn</a>'
+        )
+
+    def test_deanonymize_multiple_github_links(self):
+        """Test that other users' GitHub links are kept and own repo links are restored"""
+        resume_structured = {
+            "personal_information": {
+                "github": "https://github.com/johndoe",
+                "gender": "male",
+            },
+        }
+
+        original_text = (
+            "Profile: https://github.com/johndoe, "
+            "fork of https://github.com/torvalds/linux, "
+            "project https://github.com/johndoe/proj"
+        )
+        anonymizer = ResumeAnonymizer(resume_structured)
+
+        anonymized = anonymizer.anonymize_text(original_text)
+        deanonymized = anonymizer.deanonymize_text(anonymized)
+
+        assert "johndoe" not in anonymized
+        assert "https://github.com/torvalds/linux" in anonymized
+        assert deanonymized == original_text
 
     def test_deanonymize_name(self):
         """Test deanonymizing name"""
@@ -785,8 +857,6 @@ class TestRealWorldScenarios:
 
         assert "Jane Smith" not in anonymized
         assert "jane.smith@example.com" not in anonymized
-        assert anonymizer.github_links == []
-        assert anonymizer.linkedin_links == []
 
     def test_resume_with_multiple_social_profiles(self):
         """Test resume with multiple GitHub/LinkedIn references"""
@@ -808,10 +878,7 @@ class TestRealWorldScenarios:
         anonymizer = ResumeAnonymizer(resume_structured)
         anonymized = anonymizer.anonymize_text(text)
 
-        # GitHub links with protocol should be anonymized
-        assert "https://github.com/johndoe" not in anonymized
-        # LinkedIn links with protocol should be anonymized
-        assert "https://linkedin.com/in/johndoe" not in anonymized
-        # Links should be tracked
-        assert len(anonymizer.github_links) == 2
-        assert len(anonymizer.linkedin_links) == 1
+        # Own profiles should be anonymized, other accounts kept as is
+        assert f"Personal: {DUMMY_PERSONAL_INFO_MALE['github']}\n" in anonymized
+        assert "Organization: https://github.com/johndoe-org\n" in anonymized
+        assert f"LinkedIn: {DUMMY_PERSONAL_INFO_MALE['linkedin']}\n" in anonymized

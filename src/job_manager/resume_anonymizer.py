@@ -5,13 +5,38 @@ from typing import Any, Dict
 
 from config.constants import DUMMY_PERSONAL_INFO_FEMALE, DUMMY_PERSONAL_INFO_MALE
 
+# Placeholder used in the structured resume for missing values
+NO_INFO = "No info"
+# Profile URL prefixes (without protocol and "www.") that precede the username
+PROFILE_URL_BASES = {"github": "github.com/", "linkedin": "linkedin.com/in/"}
+
+
+def profile_username(url: str, key: str) -> str | None:
+    """Extract the username from a GitHub/LinkedIn profile URL"""
+    match = re.search(rf"{re.escape(PROFILE_URL_BASES[key])}([^\s/?#]+)", url)
+    return match.group(1) if match else None
+
+
+def replace_profile_url(text: str, key: str, username: str, new_url: str) -> str:
+    """Replace profile URLs of the given user, keeping repo paths and trailing punctuation"""
+    pattern = (
+        rf"(?:https?://)?(?:www\.)?{re.escape(PROFILE_URL_BASES[key])}"
+        rf"{re.escape(username)}(?![\w%-])"
+    )
+    return re.sub(pattern, new_url, text, flags=re.IGNORECASE)
+
 
 class ResumeAnonymizer:
     def __init__(self, resume_structured: Dict[str, Any]):
         self.resume_anonymized = resume_structured.copy()
-        self.github_links = []
-        self.linkedin_links = []
         self.personal_information = resume_structured["personal_information"].copy()
+
+    def real_value(self, key: str) -> Any:
+        """Return the real personal information value, or None if it's missing"""
+        value = self.personal_information.get(key)
+        if not value or value == NO_INFO:
+            return None
+        return value
 
     def anonymize_personal_information(self) -> None:
         """Anonymize personal information by replacing them with dummy data"""
@@ -22,7 +47,7 @@ class ResumeAnonymizer:
             dummy_pesonal_info = DUMMY_PERSONAL_INFO_MALE
         # anonymize the "personal information" fields
         for key, value in dummy_pesonal_info.items():
-            if self.resume_anonymized["personal_information"].get(key):
+            if self.real_value(key):
                 self.resume_anonymized["personal_information"][key] = value
 
     def anonymize_text(self, input_text: str) -> str:
@@ -34,40 +59,18 @@ class ResumeAnonymizer:
         else:
             dummy_pesonal_info = DUMMY_PERSONAL_INFO_MALE
         for key, value in dummy_pesonal_info.items():
-            # anonymize the github username
-            if key == "github":
-                self.github_links = re.findall(
-                    r"https?://(?:www\.)?github\.com/([^\s/]+)", output_text
-                )
-                self.github_links = [
-                    f"https://github.com/{github_link}" for github_link in self.github_links
-                ]
-                if self.github_links:
-                    output_text = re.sub(
-                        r"(?:https?://)?(?:www\.)?github\.com/([^\s/]+)",
-                        value,
-                        output_text,
-                    )
-            elif key == "linkedin":
-                self.linkedin_links = re.findall(
-                    r"https?://(?:www\.)?linkedin\.com/in/([^\s/]+)", output_text
-                )
-                self.linkedin_links = [
-                    f"https://linkedin.com/in/{linkedin_link}"
-                    for linkedin_link in self.linkedin_links
-                ]
-                if self.linkedin_links:
-                    output_text = re.sub(
-                        r"(?:https?://)?(?:www\.)?linkedin\.com/in/([^\s/]+)",
-                        value,
-                        output_text,
-                    )
+            # anonymize the github/linkedin username
+            if key in PROFILE_URL_BASES:
+                real_url = self.real_value(key)
+                username = profile_username(real_url, key) if real_url else None
+                if username:
+                    output_text = replace_profile_url(output_text, key, username, value)
             elif key in ["last_name_2"]:
                 continue
             else:
-                if not self.personal_information.get(key):
+                value_to_replace = self.real_value(key)
+                if not value_to_replace:
                     continue
-                value_to_replace = self.personal_information[key]
                 if "github" in value_to_replace:
                     continue
                 if key in ["phone", "phone_code"]:
@@ -96,21 +99,15 @@ class ResumeAnonymizer:
         else:
             dummy_pesonal_info = DUMMY_PERSONAL_INFO_MALE
         for key, value_to_replace in dummy_pesonal_info.items():
-            if key == "github":
-                for i, github_link in enumerate(self.github_links):
-                    output_text = re.sub(
-                        r"(?:https?://)?(?:www\.)?github\.com/[^\"'>^\s/]+",
-                        github_link,
+            if key in PROFILE_URL_BASES:
+                real_url = self.real_value(key)
+                username = profile_username(real_url, key) if real_url else None
+                if username:
+                    output_text = replace_profile_url(
                         output_text,
-                        count=i + 1,
-                    )
-            elif key == "linkedin":
-                for i, linkedin_link in enumerate(self.linkedin_links):
-                    output_text = re.sub(
-                        r"(?:https?://)?(?:www\.)?linkedin\.com/in/[^\"'>^\s/]+",
-                        linkedin_link,
-                        output_text,
-                        count=i + 1,
+                        key,
+                        profile_username(value_to_replace, key),
+                        f"https://{PROFILE_URL_BASES[key]}{username}",
                     )
             else:
                 if "github" in value_to_replace or "linkedin" in value_to_replace:
